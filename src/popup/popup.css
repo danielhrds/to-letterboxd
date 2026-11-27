@@ -1,0 +1,26 @@
+body { width: 23rem; max-width: 100vw; font-size: 0.875rem; }
+
+header { padding-block-end: 0.75rem; border-bottom: 1px solid var(--border); }
+form { margin-block-start: 0.4rem; }
+fieldset { min-inline-size: 0; margin: 0.4rem 0; padding: 0.15rem 0.5rem; border: 1px solid var(--border); border-radius: 0.4rem; }
+legend { padding-inline: 0.3rem; color: var(--muted); }
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  min-block-size: 2rem;
+}
+
+input[type="checkbox"] { flex: none; width: 1.05rem; height: 1.05rem; margin: 0; }
+
+details { margin-block-start: 0.5rem; padding-block-start: 0.65rem; border-top: 1px solid var(--border); }
+summary { cursor: pointer; font-weight: 600; }
+.token { display: grid; gap: 0.3rem; margin-block: 0.5rem; }
+.token input { min-inline-size: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-block: 0.35rem; }
+
+footer { margin-block-start: 0.65rem; padding-block-start: 0.25rem; border-top: 1px solid var(--border); font-size: 0.8rem; }
+footer p { margin-block: 0.3rem; }
+footer img { display: block; object-fit: contain; margin-block-start: 0.65rem; }

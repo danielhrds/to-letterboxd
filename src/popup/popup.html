@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-title="appName">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../ui/styles.css">
+  <link rel="stylesheet" href="popup.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body>
+  <header class="brand">
+    <img src="../../assets/icons/32.png" width="32" height="32" alt="">
+    <h1 data-message="appName"></h1>
+  </header>
+  <main>
+    <form id="settings">
+      <label class="row"><span data-message="enabled"></span><input type="checkbox" name="enabled"></label>
+      <fieldset>
+        <legend data-message="google"></legend>
+        <label class="row"><span data-message="googlePanel"></span><input type="checkbox" name="googlePanel"></label>
+        <label class="row"><span data-message="googleImdb"></span><input type="checkbox" name="googleImdb"></label>
+        <label class="row"><span data-message="googleResult"></span><input type="checkbox" name="googleResult"></label>
+      </fieldset>
+      <label class="row"><span data-message="contextMenu"></span><input type="checkbox" name="contextMenu"></label>
+      <label class="row"><span data-message="menuMode"></span>
+        <select name="menuMode">
+          <option value="smart" data-message="modeSmart"></option>
+          <option value="search" data-message="modeSearch"></option>
+        </select>
+      </label>
+      <label class="row"><span data-message="newTab"></span><input type="checkbox" name="newTab"></label>
+      <label class="row"><span data-message="theme"></span>
+        <select name="theme">
+          <option value="auto" data-message="themeAuto"></option>
+          <option value="light" data-message="themeLight"></option>
+          <option value="dark" data-message="themeDark"></option>
+        </select>
+      </label>
+      <details id="advanced">
+        <summary data-message="advanced"></summary>
+        <label class="row"><span data-message="tmdbEnabled"></span><input type="checkbox" name="tmdbEnabled" disabled></label>
+        <label class="token"><span data-message="tokenLabel"></span>
+          <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="4096">
+        </label>
+        <div class="actions">
+          <button id="save-token" type="button" data-message="saveToken"></button>
+          <button id="test-token" type="button" data-message="testToken"></button>
+          <button id="remove-token" type="button" data-message="removeToken" disabled></button>
+        </div>
+        <p id="tmdb-state" class="muted" role="status"></p>
+        <p><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" data-message="getToken"></a></p>
+        <label class="row"><span data-message="persistentCache"></span><input type="checkbox" name="persistentCache"></label>
+        <div class="actions">
+          <button id="clear-cache" type="button" data-message="clearCache"></button>
+          <button id="restore" type="button" data-message="restoreDefaults"></button>
+        </div>
+      </details>
+    </form>
+    <p id="settings-state" class="muted" role="status" hidden></p>
+  </main>
+  <footer class="muted">
+    <div class="row">
+      <a href="privacy.html" target="_blank" rel="noopener" data-message="privacy"></a>
+      <span id="version"></span>
+    </div>
+    <p data-message="independent"></p>
+    <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer">
+      <img src="../../assets/tmdb.svg" width="54" height="39" alt="TMDB">
+    </a>
+    <p class="tmdb-notice" lang="en">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+  </footer>
+</body>
+</html>

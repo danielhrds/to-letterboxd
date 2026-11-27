@@ -1,0 +1,180 @@
+{
+  "appName": {
+    "message": "To Letterboxd"
+  },
+  "extensionDescription": {
+    "message": "Abra filmes no Letterboxd a partir da Pesquisa Google e de textos selecionados."
+  },
+  "menuOpen": {
+    "message": "Abrir no Letterboxd"
+  },
+  "viewOnLetterboxd": {
+    "message": "Ver no Letterboxd"
+  },
+  "searchOnLetterboxd": {
+    "message": "Buscar no Letterboxd"
+  },
+  "searchInstead": {
+    "message": "Buscar pelo título"
+  },
+  "resultTitle": {
+    "message": "$TITLE$ no Letterboxd",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "resultSearchTitle": {
+    "message": "Buscar $TITLE$ no Letterboxd",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "resultDescription": {
+    "message": "Abra o filme no Letterboxd."
+  },
+  "resultSearchDescription": {
+    "message": "Encontre o filme na busca do Letterboxd."
+  },
+  "addedByExtension": {
+    "message": "Adicionado pelo To Letterboxd"
+  },
+  "resolvingTitle": {
+    "message": "Localizando o filme no Letterboxd…"
+  },
+  "resolutionCanceled": {
+    "message": "Busca de filme cancelada"
+  },
+  "searchNow": {
+    "message": "Buscar agora no Letterboxd"
+  },
+  "enabled": {
+    "message": "Extensão ativada"
+  },
+  "google": {
+    "message": "Pesquisa Google"
+  },
+  "googlePanel": {
+    "message": "Botão no painel do filme"
+  },
+  "googleImdb": {
+    "message": "Atalhos do IMDb"
+  },
+  "googleResult": {
+    "message": "Resultado dedicado"
+  },
+  "contextMenu": {
+    "message": "Menu de contexto para texto selecionado"
+  },
+  "menuMode": {
+    "message": "Ação para texto selecionado"
+  },
+  "modeSmart": {
+    "message": "Localizar filme"
+  },
+  "modeSearch": {
+    "message": "Buscar imediatamente"
+  },
+  "newTab": {
+    "message": "Abrir em nova aba"
+  },
+  "theme": {
+    "message": "Tema"
+  },
+  "themeAuto": {
+    "message": "Automático"
+  },
+  "themeLight": {
+    "message": "Claro"
+  },
+  "themeDark": {
+    "message": "Escuro"
+  },
+  "advanced": {
+    "message": "Configurações avançadas"
+  },
+  "tmdbEnabled": {
+    "message": "Usar o TMDB para localizar títulos"
+  },
+  "tokenLabel": {
+    "message": "Token pessoal de leitura da API do TMDB"
+  },
+  "saveToken": {
+    "message": "Salvar e ativar"
+  },
+  "testToken": {
+    "message": "Testar conexão"
+  },
+  "removeToken": {
+    "message": "Remover token"
+  },
+  "getToken": {
+    "message": "Obter token do TMDB"
+  },
+  "persistentCache": {
+    "message": "Manter correspondências entre sessões"
+  },
+  "clearCache": {
+    "message": "Limpar cache"
+  },
+  "restoreDefaults": {
+    "message": "Restaurar padrões"
+  },
+  "privacy": {
+    "message": "Privacidade"
+  },
+  "independent": {
+    "message": "Extensão independente para o Letterboxd."
+  },
+  "privacyData": {
+    "message": "A extensão usa dados de filmes nas páginas compatíveis da Pesquisa Google e o texto selecionado quando você usa o menu de contexto. Ao abrir um resultado, o Letterboxd recebe o ID, o endereço do filme ou o texto da busca. Com o TMDB ativado, a extensão envia títulos, anos e idioma ao serviço quando precisa identificar um filme. A extensão não usa métricas, anúncios ou servidor próprio."
+  },
+  "privacyToken": {
+    "message": "O token do TMDB fica no armazenamento restrito às páginas da extensão e é enviado no cabeçalho de autorização à API do TMDB. Você pode removê-lo nas configurações avançadas. O armazenamento local do Chrome não é um cofre criptografado."
+  },
+  "privacyCache": {
+    "message": "Correspondências confirmadas expiram após 24 horas e, por padrão, ficam na sessão atual do navegador. Você pode mantê-las entre sessões ou apagá-las nas configurações avançadas."
+  },
+  "notConfigured": {
+    "message": "TMDB ainda não configurado."
+  },
+  "configured": {
+    "message": "Token salvo. Use o teste para verificar a conexão."
+  },
+  "connected": {
+    "message": "Conexão com o TMDB confirmada."
+  },
+  "tmdbDisabled": {
+    "message": "TMDB desativado. O token continua salvo."
+  },
+  "invalidToken": {
+    "message": "O TMDB rejeitou o token."
+  },
+  "rateLimited": {
+    "message": "Limite de consultas do TMDB atingido. Tente mais tarde."
+  },
+  "unavailable": {
+    "message": "Não foi possível concluir a ação. Tente novamente."
+  },
+  "tmdbUnavailable": {
+    "message": "Não foi possível se conectar ao TMDB. Tente novamente mais tarde."
+  },
+  "permissionDenied": {
+    "message": "A permissão de acesso ao TMDB não foi concedida."
+  },
+  "checking": {
+    "message": "Verificando o TMDB…"
+  },
+  "enterToken": {
+    "message": "Informe um token de leitura do TMDB."
+  },
+  "cacheCleared": {
+    "message": "Cache de filmes limpo."
+  },
+  "restored": {
+    "message": "Configurações padrão restauradas."
+  }
+}

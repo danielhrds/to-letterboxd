@@ -1,0 +1,180 @@
+{
+  "appName": {
+    "message": "To Letterboxd"
+  },
+  "extensionDescription": {
+    "message": "Open films on Letterboxd from Google Search and selected text."
+  },
+  "menuOpen": {
+    "message": "Open on Letterboxd"
+  },
+  "viewOnLetterboxd": {
+    "message": "View on Letterboxd"
+  },
+  "searchOnLetterboxd": {
+    "message": "Search on Letterboxd"
+  },
+  "searchInstead": {
+    "message": "Search instead"
+  },
+  "resultTitle": {
+    "message": "$TITLE$ on Letterboxd",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "resultSearchTitle": {
+    "message": "Search Letterboxd for $TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "resultDescription": {
+    "message": "Open the film on Letterboxd."
+  },
+  "resultSearchDescription": {
+    "message": "Find the film in Letterboxd search."
+  },
+  "addedByExtension": {
+    "message": "Added by To Letterboxd"
+  },
+  "resolvingTitle": {
+    "message": "Finding the film on Letterboxd…"
+  },
+  "resolutionCanceled": {
+    "message": "Film lookup canceled"
+  },
+  "searchNow": {
+    "message": "Search on Letterboxd now"
+  },
+  "enabled": {
+    "message": "Extension enabled"
+  },
+  "google": {
+    "message": "Google Search"
+  },
+  "googlePanel": {
+    "message": "Film panel button"
+  },
+  "googleImdb": {
+    "message": "IMDb shortcuts"
+  },
+  "googleResult": {
+    "message": "Dedicated result"
+  },
+  "contextMenu": {
+    "message": "Selection context menu"
+  },
+  "menuMode": {
+    "message": "Selection action"
+  },
+  "modeSmart": {
+    "message": "Find film"
+  },
+  "modeSearch": {
+    "message": "Search immediately"
+  },
+  "newTab": {
+    "message": "Open in a new tab"
+  },
+  "theme": {
+    "message": "Theme"
+  },
+  "themeAuto": {
+    "message": "Automatic"
+  },
+  "themeLight": {
+    "message": "Light"
+  },
+  "themeDark": {
+    "message": "Dark"
+  },
+  "advanced": {
+    "message": "Advanced settings"
+  },
+  "tmdbEnabled": {
+    "message": "Use TMDB to find titles"
+  },
+  "tokenLabel": {
+    "message": "Personal TMDB API Read Access Token"
+  },
+  "saveToken": {
+    "message": "Save and enable"
+  },
+  "testToken": {
+    "message": "Test connection"
+  },
+  "removeToken": {
+    "message": "Remove token"
+  },
+  "getToken": {
+    "message": "Get a TMDB token"
+  },
+  "persistentCache": {
+    "message": "Keep film matches between sessions"
+  },
+  "clearCache": {
+    "message": "Clear cache"
+  },
+  "restoreDefaults": {
+    "message": "Restore defaults"
+  },
+  "privacy": {
+    "message": "Privacy"
+  },
+  "independent": {
+    "message": "Independent extension for Letterboxd."
+  },
+  "privacyData": {
+    "message": "The extension uses film details from supported Google Search pages and text you select when you use the context menu. Opening a result sends its ID, film URL or search text to Letterboxd. With TMDB enabled, the extension sends titles, years and language to TMDB when it needs to identify a film. The extension has no analytics, advertising or developer-operated server."
+  },
+  "privacyToken": {
+    "message": "The TMDB token stays in trusted extension storage. It is sent in the authorization header to the TMDB API. You can remove it in advanced settings. Chrome's local storage is not an encrypted vault."
+  },
+  "privacyCache": {
+    "message": "Confirmed film matches expire after 24 hours and are stored in the current browser session by default. You can opt to keep them between sessions or clear them in advanced settings."
+  },
+  "notConfigured": {
+    "message": "TMDB is not configured."
+  },
+  "configured": {
+    "message": "Token saved. Test the connection to check it."
+  },
+  "connected": {
+    "message": "Connected to TMDB."
+  },
+  "tmdbDisabled": {
+    "message": "TMDB is off. The token is still saved."
+  },
+  "invalidToken": {
+    "message": "TMDB rejected the token."
+  },
+  "rateLimited": {
+    "message": "TMDB rate limit reached. Try again later."
+  },
+  "unavailable": {
+    "message": "Could not complete the action. Try again."
+  },
+  "tmdbUnavailable": {
+    "message": "Could not connect to TMDB. Try again later."
+  },
+  "permissionDenied": {
+    "message": "TMDB site permission was not granted."
+  },
+  "checking": {
+    "message": "Checking TMDB…"
+  },
+  "enterToken": {
+    "message": "Enter a TMDB read access token."
+  },
+  "cacheCleared": {
+    "message": "Film cache cleared."
+  },
+  "restored": {
+    "message": "Defaults restored."
+  }
+}
