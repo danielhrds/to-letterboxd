@@ -29,7 +29,7 @@ function updateMenu() {
       void chrome.runtime.lastError;
       resolve();
     }));
-    if (settings.enabled && settings.contextMenu) {
+    if (settings.contextMenu) {
       await new Promise(resolve => chrome.contextMenus.create({
         id: MENU_ID, title: chrome.i18n.getMessage("menuOpen"), contexts: ["selection"]
       }, () => {
@@ -53,7 +53,7 @@ async function openSelection(text, tab) {
   const raw = cleanText(text, 1000);
   if (!raw) return;
   const { settings, token } = await configuration();
-  if (!settings.enabled || !settings.contextMenu) return;
+  if (!settings.contextMenu) return;
   const input = parseSelection(raw);
   const known = settings.menuMode === "smart" ? knownDestination(input) : null;
   const canResolve = settings.menuMode === "smart" && input.title && settings.tmdbEnabled &&
@@ -158,7 +158,7 @@ function connectGoogle(port) {
       const config = await configuration();
       if (controller.signal.aborted) return;
       const { settings } = config;
-      if (!settings.enabled || (!settings.googlePanel && !settings.googleResult)) return;
+      if (!settings.googlePanel && !settings.googleResult) return;
       const result = await resolveShared(input, config, controller.signal);
       if (!controller.signal.aborted) safePost(port, { type: "result", id: message.id, result });
     })().catch(() => {
@@ -187,7 +187,7 @@ function connectMenu(port) {
     const input = { ...parseSelection(message.text), locale: chrome.i18n.getUILanguage() };
     void (async () => {
       const config = await configuration();
-      if (!config.settings.enabled || !config.settings.contextMenu) {
+      if (!config.settings.contextMenu) {
         safePost(port, { type: "canceled" });
         return;
       }
@@ -260,7 +260,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || (!changes[SETTINGS_KEY] && !changes[TOKEN_KEY])) return;
   const before = readSettings(changes[SETTINGS_KEY]?.oldValue);
   const after = readSettings(changes[SETTINGS_KEY]?.newValue);
-  if (changes[SETTINGS_KEY] && (before.enabled !== after.enabled || before.contextMenu !== after.contextMenu)) {
+  if (changes[SETTINGS_KEY] && before.contextMenu !== after.contextMenu) {
     updateMenu();
   }
   if (changes[TOKEN_KEY]) void clearMatches().catch(() => {});
@@ -268,9 +268,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     void clearMatches({ persistentOnly: true }).catch(() => {});
   }
   const invalidate = Boolean(changes[TOKEN_KEY]) || Boolean(changes[SETTINGS_KEY] &&
-    ["enabled", "googlePanel", "googleResult", "tmdbEnabled", "persistentCache"]
+    ["googlePanel", "googleResult", "tmdbEnabled", "persistentCache"]
       .some(key => before[key] !== after[key]));
-  if (changes[SETTINGS_KEY] && (!after.enabled || !after.contextMenu)) {
+  if (changes[SETTINGS_KEY] && !after.contextMenu) {
     for (const [port, controller] of menuPorts) {
       controller.abort();
       safePost(port, { type: "canceled" });

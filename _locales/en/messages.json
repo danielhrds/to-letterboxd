@@ -51,9 +51,6 @@
   "searchNow": {
     "message": "Search on Letterboxd now"
   },
-  "enabled": {
-    "message": "Extension enabled"
-  },
   "google": {
     "message": "Google Search"
   },
@@ -94,13 +91,13 @@
     "message": "Dark"
   },
   "advanced": {
-    "message": "Advanced settings"
+    "message": "TMDB and cache"
   },
   "tmdbEnabled": {
     "message": "Use TMDB to find titles"
   },
   "tokenLabel": {
-    "message": "Personal TMDB API Read Access Token"
+    "message": "TMDB API Read Access Token"
   },
   "saveToken": {
     "message": "Save and enable"
@@ -112,10 +109,13 @@
     "message": "Remove token"
   },
   "getToken": {
-    "message": "Get a TMDB token"
+    "message": "Get your API Read Access Token"
   },
   "persistentCache": {
-    "message": "Keep film matches between sessions"
+    "message": "Keep TMDB matches after closing Chrome"
+  },
+  "cacheHelp": {
+    "message": "Reuses confirmed matches for up to 24 hours."
   },
   "clearCache": {
     "message": "Clear cache"
@@ -133,10 +133,10 @@
     "message": "The extension uses film details from supported Google Search pages and text you select when you use the context menu. Opening a result sends its ID, film URL or search text to Letterboxd. With TMDB enabled, the extension sends titles, years and language to TMDB when it needs to identify a film. The extension has no analytics, advertising or developer-operated server."
   },
   "privacyToken": {
-    "message": "The TMDB token stays in trusted extension storage. It is sent in the authorization header to the TMDB API. You can remove it in advanced settings. Chrome's local storage is not an encrypted vault."
+    "message": "The TMDB token stays in trusted extension storage. It is sent in the authorization header to the TMDB API. You can remove it under TMDB and cache. Chrome's local storage is not an encrypted vault."
   },
   "privacyCache": {
-    "message": "Confirmed film matches expire after 24 hours and are stored in the current browser session by default. You can opt to keep them between sessions or clear them in advanced settings."
+    "message": "Confirmed film matches expire after 24 hours and are stored in the current browser session by default. You can keep them between sessions or clear them under TMDB and cache."
   },
   "notConfigured": {
     "message": "TMDB is not configured."

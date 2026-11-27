@@ -117,13 +117,13 @@ async function setup(settings = {}, enabled = false) {
   await setImmediate();
 }
 
-test("registers and removes the selection menu, and honors global disable", async () => {
-  await setup();
+test("registers and removes the selection menu independently of the old global setting", async () => {
+  await setup({ enabled: false });
   chrome.runtime.onInstalled.emit();
   await setImmediate();
   assert.equal(local.accessLevel, "TRUSTED_CONTEXTS");
   assert.deepEqual(menu.get("open-letterboxd").contexts, ["selection"]);
-  await local.set({ settings: { ...DEFAULTS, enabled: false } });
+  await local.set({ settings: { ...DEFAULTS, contextMenu: false } });
   choose("Interstellar");
   await setImmediate();
   assert.equal(menu.size, 0);

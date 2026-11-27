@@ -51,9 +51,6 @@
   "searchNow": {
     "message": "Buscar agora no Letterboxd"
   },
-  "enabled": {
-    "message": "Extensão ativada"
-  },
   "google": {
     "message": "Pesquisa Google"
   },
@@ -94,13 +91,13 @@
     "message": "Escuro"
   },
   "advanced": {
-    "message": "Configurações avançadas"
+    "message": "TMDB e cache"
   },
   "tmdbEnabled": {
     "message": "Usar o TMDB para localizar títulos"
   },
   "tokenLabel": {
-    "message": "Token pessoal de leitura da API do TMDB"
+    "message": "Token de leitura da API do TMDB"
   },
   "saveToken": {
     "message": "Salvar e ativar"
@@ -112,10 +109,13 @@
     "message": "Remover token"
   },
   "getToken": {
-    "message": "Obter token do TMDB"
+    "message": "Obter o API Read Access Token"
   },
   "persistentCache": {
-    "message": "Manter correspondências entre sessões"
+    "message": "Guardar resultados do TMDB após fechar o Chrome"
+  },
+  "cacheHelp": {
+    "message": "Reutiliza correspondências confirmadas por até 24 horas."
   },
   "clearCache": {
     "message": "Limpar cache"
@@ -133,10 +133,10 @@
     "message": "A extensão usa dados de filmes nas páginas compatíveis da Pesquisa Google e o texto selecionado quando você usa o menu de contexto. Ao abrir um resultado, o Letterboxd recebe o ID, o endereço do filme ou o texto da busca. Com o TMDB ativado, a extensão envia títulos, anos e idioma ao serviço quando precisa identificar um filme. A extensão não usa métricas, anúncios ou servidor próprio."
   },
   "privacyToken": {
-    "message": "O token do TMDB fica no armazenamento restrito às páginas da extensão e é enviado no cabeçalho de autorização à API do TMDB. Você pode removê-lo nas configurações avançadas. O armazenamento local do Chrome não é um cofre criptografado."
+    "message": "O token do TMDB fica no armazenamento restrito às páginas da extensão e é enviado no cabeçalho de autorização à API do TMDB. Você pode removê-lo em TMDB e cache. O armazenamento local do Chrome não é um cofre criptografado."
   },
   "privacyCache": {
-    "message": "Correspondências confirmadas expiram após 24 horas e, por padrão, ficam na sessão atual do navegador. Você pode mantê-las entre sessões ou apagá-las nas configurações avançadas."
+    "message": "Correspondências confirmadas expiram após 24 horas e, por padrão, ficam na sessão atual do navegador. Você pode guardá-las entre sessões ou apagá-las em TMDB e cache."
   },
   "notConfigured": {
     "message": "TMDB ainda não configurado."

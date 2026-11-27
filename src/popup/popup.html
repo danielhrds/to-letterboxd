@@ -14,7 +14,6 @@
   </header>
   <main>
     <form id="settings">
-      <label class="row"><span data-message="enabled"></span><input type="checkbox" name="enabled"></label>
       <fieldset>
         <legend data-message="google"></legend>
         <label class="row"><span data-message="googlePanel"></span><input type="checkbox" name="googlePanel"></label>
@@ -40,16 +39,17 @@
         <summary data-message="advanced"></summary>
         <label class="row"><span data-message="tmdbEnabled"></span><input type="checkbox" name="tmdbEnabled" disabled></label>
         <label class="token"><span data-message="tokenLabel"></span>
-          <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="4096">
+          <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="4096" aria-describedby="get-token">
         </label>
+        <p class="setting-help"><a id="get-token" href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" data-message="getToken"></a></p>
         <div class="actions">
           <button id="save-token" type="button" data-message="saveToken"></button>
           <button id="test-token" type="button" data-message="testToken"></button>
           <button id="remove-token" type="button" data-message="removeToken" disabled></button>
         </div>
         <p id="tmdb-state" class="muted" role="status"></p>
-        <p><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" data-message="getToken"></a></p>
-        <label class="row"><span data-message="persistentCache"></span><input type="checkbox" name="persistentCache"></label>
+        <label class="row"><span data-message="persistentCache"></span><input type="checkbox" name="persistentCache" aria-describedby="cache-help"></label>
+        <p id="cache-help" class="muted setting-help" data-message="cacheHelp"></p>
         <div class="actions">
           <button id="clear-cache" type="button" data-message="clearCache"></button>
           <button id="restore" type="button" data-message="restoreDefaults"></button>

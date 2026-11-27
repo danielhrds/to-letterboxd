@@ -131,11 +131,28 @@ test("installs in Chrome and updates Google controls across settings and result 
   });
   await send("Runtime.enable", {}, google.sessionId);
   await send("Runtime.enable", {}, popup.sessionId);
+  await send("Emulation.setDeviceMetricsOverride", {
+    width: 420, height: 600, deviceScaleFactor: 1, mobile: false
+  }, popup.sessionId);
   await send("Fetch.enable", { patterns: [{ urlPattern: "https://www.google.com/search*", resourceType: "Document" }] }, google.sessionId);
   await popup.navigate(`${origin}/src/popup/popup.html`);
-  await until(() => popup.value("document.querySelector('#settings input[name=enabled]')?.checked"));
+  await until(() => popup.value("document.querySelector('#settings input[name=googlePanel]')?.checked"));
   assert.equal(await popup.value("document.title"), "To Letterboxd");
   assert.equal(await popup.value("document.getElementById('tmdb-state').textContent"), "TMDB is not configured.");
+  assert.equal(await popup.value("document.querySelector('[name=enabled]') === null"), true);
+  assert.equal(await popup.value("document.querySelector('#advanced summary').textContent"), "TMDB and cache");
+  assert.equal(await popup.value("document.querySelector('#token').type"), "password");
+  assert.equal(await popup.value("document.querySelector('#get-token').pathname"), "/settings/api");
+  assert.equal(await popup.value("document.querySelector('[name=persistentCache]').checked"), false);
+  await popup.value("document.querySelector('#advanced').open = true");
+  const popupLayout = await popup.value(`({
+    overflow: document.documentElement.scrollWidth > innerWidth,
+    padding: getComputedStyle(document.body).paddingRight,
+    tokenWidth: document.querySelector('#token').getBoundingClientRect().width
+  })`);
+  assert.equal(popupLayout.overflow, false);
+  assert.equal(popupLayout.padding, "22px");
+  assert.ok(popupLayout.tokenWidth > 320);
   const menuExists = () => popup.value("chrome.contextMenus.update('open-letterboxd', {visible: true}).then(() => true, () => false)");
   await until(menuExists);
   await google.navigate(fakeGoogle);
@@ -181,10 +198,14 @@ test("installs in Chrome and updates Google controls across settings and result 
     theme.dispatchEvent(new Event('change', { bubbles: true }));
   `);
   await until(() => google.value("document.querySelector('[data-to-letterboxd=panel]')?.dataset.theme === 'dark'"));
-  await popup.value("document.querySelector('input[name=enabled]').click()");
-  await until(async () => (await links("panel")).length === 0);
+  await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await until(async () => !await menuExists());
-  await popup.value("document.querySelector('input[name=enabled]').click()");
+  assert.equal((await links("panel")).length, 1);
+  await popup.value("document.querySelector('input[name=googlePanel]').click()");
+  await until(async () => (await links("panel")).length === 0);
+  await popup.value("document.querySelector('input[name=googlePanel]').click()");
+  await until(async () => (await links("panel")).length === 1);
+  await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await popup.value("document.querySelector('input[name=googleImdb]').click()");
   await until(async () => (await links("imdb")).length === 2);
   await google.navigate("https://www.google.com/search?q=regular");

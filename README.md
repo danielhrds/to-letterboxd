@@ -13,7 +13,7 @@ A extensão funciona sem configuração inicial. O popup oferece controles indep
 ## Resolução por título com TMDB
 
 1. Abra [Configurações de API do TMDB](https://www.themoviedb.org/settings/api) e copie seu **API Read Access Token**.
-2. No popup, abra **Configurações avançadas**, cole o token e selecione **Salvar e ativar**.
+2. No popup, abra **TMDB e cache**, cole o token no campo **Token de leitura da API do TMDB** e selecione **Salvar e ativar**.
 3. Conceda acesso ao host da API quando o Chrome solicitar. Use **Testar conexão** para verificar o token ou **Remover token** para apagar a credencial e revogar a permissão.
 
 Um ano entre parênteses ajuda a distinguir homônimos, por exemplo `Oldboy (2003)`. O modo **Buscar imediatamente** envia o texto selecionado direto à pesquisa do Letterboxd. URLs e IDs reconhecidos funcionam independentemente do TMDB.

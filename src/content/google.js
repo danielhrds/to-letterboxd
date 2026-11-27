@@ -204,8 +204,7 @@ export function start() {
     });
     port.onMessage.addListener(message => {
       if (message.type === "settings") {
-        if (message.invalidate || !settings || settings.tmdbEnabled !== message.settings.tmdbEnabled ||
-            settings.enabled !== message.settings.enabled) {
+        if (message.invalidate || !settings || settings.tmdbEnabled !== message.settings.tmdbEnabled) {
           cancelResolution();
         }
         settings = message.settings;
@@ -245,7 +244,7 @@ export function start() {
       page = location.href;
       cancelResolution();
     }
-    if (settings?.enabled && isGoogleSearch(page)) {
+    if (settings && isGoogleSearch(page)) {
       theme = settings.theme;
       if (theme === "auto") {
         const color = getComputedStyle(document.body).backgroundColor;

@@ -3,7 +3,6 @@ export const TOKEN_KEY = "tmdbToken";
 export const TMDB_PERMISSION = { origins: ["https://api.themoviedb.org/*"] };
 
 export const DEFAULTS = Object.freeze({
-  enabled: true,
   googlePanel: true,
   googleImdb: true,
   googleResult: true,
