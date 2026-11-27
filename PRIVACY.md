@@ -1,6 +1,6 @@
 # Privacidade
 
-To Letterboxd não usa analytics, anúncios nem servidor próprio. As preferências e o cache ficam no Chrome. A extensão lê metadados dos resultados em `www.google.com/search` e `www.google.com.br/search`. Em outras páginas, recebe o texto selecionado apenas quando alguém escolhe **Abrir no Letterboxd** no menu de contexto.
+To Letterboxd não usa analytics, anúncios nem servidor próprio. As preferências e o cache ficam no Chrome. A extensão lê metadados dos resultados em `www.google.com/search` e `www.google.com.br/search` e pode reutilizar a URL de um pôster que o Google já carregou. Em outras páginas, recebe o texto selecionado apenas quando alguém escolhe **Abrir no Letterboxd** no menu de contexto.
 
 Ao abrir uma página, o Letterboxd recebe o endereço do filme, o ID ou o texto da busca. Com o TMDB ativado, a extensão envia títulos, idioma e, quando disponível, o ano para identificar o filme. O token pessoal segue no cabeçalho de autorização e permanece no armazenamento local restrito a contextos da extensão. Esse armazenamento não é um cofre criptografado. Nenhum site ou script de conteúdo recebe o token da extensão.
 

@@ -219,6 +219,35 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(placement.panelAlignment, "center");
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-provider strong').textContent"),
     "Letterboxd");
+  const resultStyle = await google.value(`(() => {
+    const card = document.querySelector('[data-to-letterboxd=result]');
+    const name = card.querySelector('.tl-result-source strong');
+    const address = card.querySelector('.tl-result-address');
+    return {
+      separateLines: address.getBoundingClientRect().top >= name.getBoundingClientRect().bottom,
+      background: getComputedStyle(card).backgroundColor,
+      titleColor: getComputedStyle(card.querySelector('a')).color,
+      font: getComputedStyle(card).fontFamily
+    };
+  })()`);
+  assert.equal(resultStyle.separateLines, true);
+  assert.equal(resultStyle.background, "rgba(0, 0, 0, 0)");
+  assert.equal(resultStyle.titleColor, "rgb(23, 65, 135)");
+  assert.match(resultStyle.font, /Arial/);
+  assert.equal(await google.value("Boolean(document.querySelector('.tl-film-poster'))"), false);
+  await google.value(`(() => {
+    const img = document.createElement('img');
+    img.id = 'native-poster';
+    img.alt = 'Interstellar poster';
+    img.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABgCAYAAACtxXToAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAADCSURBVHhe7dAhAQAwEIDAT7FIy/P9zeapAOIMkjl3n9kw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmwYw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmwYw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmwYw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmwYw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmwYw2DSAwaYBDDYNYLBpAINNAxhsGsBg0wAGmw+o+AqGowP+qgAAAABJRU5ErkJggg==';
+    document.querySelector('.kp-wholepage').append(img);
+  })()`);
+  await until(() => google.value(`(() => {
+    const poster = document.querySelector('.tl-film-poster');
+    const native = document.querySelector('#native-poster');
+    return poster?.naturalWidth > 0 && poster.currentSrc === native.currentSrc &&
+      poster.getBoundingClientRect().height > poster.getBoundingClientRect().width;
+  })()`));
   assert.equal(await google.value(`(() => {
     const panel = document.querySelector('[data-to-letterboxd=panel]');
     return panel.firstElementChild.getBoundingClientRect().width === panel.getBoundingClientRect().width;
@@ -236,7 +265,7 @@ test("installs in Chrome and updates Google controls across settings and result 
     "document.querySelector('[data-to-letterboxd=imdb] a')?.textContent === 'Ver no Letterboxd'"));
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
     "Interstellar (2014) — Letterboxd");
-  assert.equal(await google.value("document.querySelector('.tl-result-provider small').textContent"), "letterboxd.com › Filme");
+  assert.equal(await google.value("document.querySelector('.tl-result-address').textContent"), "letterboxd.com › Filme");
   await popup.navigate(`${origin}/src/popup/privacy.html`);
   await until(() => popup.value("document.title === 'Privacidade' && document.documentElement.lang === 'pt-BR'"));
   await popup.navigate(`${origin}/src/resolving/resolving.html`);
@@ -275,7 +304,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(() => google.value("document.querySelector('[data-to-letterboxd=panel]')?.dataset.theme === 'dark'"));
   assert.equal(await popup.value("getComputedStyle(document.documentElement).backgroundColor"), "rgb(20, 24, 28)");
   assert.equal(await google.value(
-    "getComputedStyle(document.querySelector('[data-to-letterboxd=panel] a')).color"), "rgb(238, 242, 246)");
+    "getComputedStyle(document.querySelector('[data-to-letterboxd=panel] a')).color"), "rgb(232, 234, 237)");
   await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await until(async () => !await menuExists());
   assert.equal((await links("panel")).length, 1);

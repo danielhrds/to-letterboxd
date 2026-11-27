@@ -312,6 +312,62 @@ function existingFilm(results, film) {
   };
 }
 
+function portrait(image) {
+  const { naturalWidth, naturalHeight } = image;
+  return image.complete && naturalWidth >= 48 && naturalHeight >= naturalWidth * 1.2 &&
+    naturalHeight <= naturalWidth * 2.5;
+}
+
+function posterSource(image) {
+  if (!portrait(image) || own(image) || image.closest(EXCLUDED)) return null;
+  const source = image.currentSrc;
+  if (!source || source.length > 500000) return null;
+  if (/^data:image\/(?:png|jpeg|webp|gif|avif);base64,/i.test(source)) return source;
+  try {
+    const url = new URL(source);
+    if (url.protocol === "https:" && !url.username && !url.password && !url.port) return source;
+  } catch {}
+  return null;
+}
+
+function filmPoster(film, panel, results, root) {
+  const titles = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
+  const imageLabel = image => cleanText(image.alt ||
+    image.closest("[aria-label]")?.getAttribute("aria-label"));
+  const matchesTitle = label => {
+    const normalized = ` ${normalizeTitle(label)} `;
+    return !/\b(trailer|teaser|cast|elenco)\b/i.test(label) &&
+      titles.some(title => normalized.includes(` ${title} `));
+  };
+  for (const { anchor, heading, ids } of results) {
+    const match = (ids?.imdbId && ids.imdbId === film.imdbId) ||
+      (ids?.tmdbId && ids.tmdbId === film.tmdbId) ||
+      (ids?.canonicalUrl && ids.canonicalUrl === film.canonicalUrl);
+    if (!match) continue;
+    let group = resultAnchor(anchor, heading, root);
+    while (group.parentElement && group.parentElement !== root && hasSingleResultHeading(group.parentElement)) {
+      group = group.parentElement;
+    }
+    for (const image of group.querySelectorAll("img")) {
+      const label = imageLabel(image);
+      if (label && !matchesTitle(label) && !/^(?:pôster|poster|film poster|movie poster)$/i.test(label)) continue;
+      const source = posterSource(image);
+      if (source) return source;
+    }
+  }
+
+  const localPanel = panel?.anchor?.closest(PANEL);
+  const main = panel?.anchor?.closest('main, [role="main"]');
+  for (const area of new Set([localPanel, main])) {
+    for (const image of area?.querySelectorAll("img") ?? []) {
+      if ((area === main && image.closest("#rso")) || !matchesTitle(imageLabel(image))) continue;
+      const source = posterSource(image);
+      if (source) return source;
+    }
+  }
+  return null;
+}
+
 function logo(size = 16) {
   const icon = document.createElement("img");
   icon.width = icon.height = size;
@@ -340,17 +396,22 @@ function panelLink(url, label, newTab) {
   return anchor;
 }
 
-function resultCard(node, url, label, direct, msg, newTab) {
+function resultCard(node, url, label, direct, poster, msg, newTab) {
+  const copy = document.createElement("div");
+  copy.className = "tl-result-copy";
   const provider = document.createElement("div");
   provider.className = "tl-result-provider";
   const details = document.createElement("div");
+  details.className = "tl-result-source";
   const name = document.createElement("strong");
   name.textContent = "Letterboxd";
-  const address = document.createElement("small");
+  const address = document.createElement("div");
+  address.className = "tl-result-address";
   address.textContent = msg(direct ? "resultFilmPath" : "resultSearchPath");
   details.append(name, address);
   provider.append(logo(), details);
   const heading = document.createElement("div");
+  heading.className = "tl-result-heading";
   heading.setAttribute("role", "heading");
   heading.setAttribute("aria-level", "3");
   heading.append(link(url, label, newTab, false));
@@ -358,7 +419,19 @@ function resultCard(node, url, label, direct, msg, newTab) {
   description.textContent = msg(direct ? "resultDescription" : "resultSearchDescription");
   const attribution = document.createElement("small");
   attribution.textContent = msg("addedByExtension");
-  node.append(provider, heading, description, attribution);
+  copy.append(provider, heading, description, attribution);
+  node.append(copy);
+  if (poster) {
+    const image = document.createElement("img");
+    image.className = "tl-film-poster";
+    image.width = 76;
+    image.height = 112;
+    image.alt = "";
+    image.referrerPolicy = "no-referrer";
+    image.src = poster;
+    node.append(image);
+    node.dataset.hasPoster = "";
+  }
 }
 
 export function start() {
@@ -371,6 +444,7 @@ export function start() {
   let suspended = false;
   let page = location.href;
   let theme;
+  let palette;
   const widgets = new Map();
 
   function cancelResolution() {
@@ -432,7 +506,7 @@ export function start() {
   function setWidget(keep, key, anchor, type, details, build) {
     if (!anchor?.isConnected) return;
     keep.add(key);
-    const signature = JSON.stringify([type, details, settings.newTab, theme, messages.language]);
+    const signature = JSON.stringify([type, details, settings.newTab, theme, palette, messages.language]);
     const old = widgets.get(key);
     const parent = type === "result" ? anchor : anchor.parentElement;
     if (old?.anchor === anchor && old.node.parentElement === parent && old.signature === signature) return;
@@ -441,6 +515,9 @@ export function start() {
     node.dataset.toLetterboxd = type;
     node.dataset.theme = theme;
     node.lang = messages.language;
+    if (palette.font) node.style.setProperty("--tl-font", palette.font);
+    if (palette.link) node.style.setProperty("--tl-link", palette.link);
+    if (palette.text) node.style.setProperty("--tl-text", palette.text);
     build(node);
     if (type === "result") anchor.prepend(node);
     else anchor.after(node);
@@ -455,9 +532,10 @@ export function start() {
     }
     if (settings && messages && isGoogleSearch(page)) {
       const msg = messages.get;
+      const bodyStyle = getComputedStyle(document.body);
       theme = settings.theme;
       if (theme === "auto") {
-        const color = getComputedStyle(document.body).backgroundColor;
+        const color = bodyStyle.backgroundColor;
         const parts = color.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
         if (parts) {
           theme = 0.2126 * Number(parts[1]) + 0.7152 * Number(parts[2]) + 0.0722 * Number(parts[3]) > 145
@@ -466,6 +544,13 @@ export function start() {
       }
       const root = resultsRoot();
       const results = webResults(root);
+      const nativeStyle = results[0] && getComputedStyle(results[0].heading);
+      const bodyColor = bodyStyle.color;
+      palette = {
+        font: nativeStyle?.fontFamily,
+        link: settings.theme === "auto" && nativeStyle?.color !== bodyColor ? nativeStyle?.color : null,
+        text: settings.theme === "auto" ? bodyColor : null
+      };
       if (settings.googleImdb) {
         const placements = new Map();
         for (const { anchor, heading, ids } of results) {
@@ -518,8 +603,9 @@ export function start() {
             const displayTitle = [film.title, year ? `(${year})` : null].filter(Boolean).join(" ");
             const label = msg(directResult ? "resultTitle" : "resultSearchTitle", displayTitle);
             const url = directResult ? direct : fallback;
-            setWidget(keep, "result", cardContainer(root, results), "result", [url, label], node =>
-              resultCard(node, url, label, directResult, msg, settings.newTab));
+            const poster = directResult ? filmPoster({ ...film, canonicalUrl: canonical }, panel, results, root) : null;
+            setWidget(keep, "result", cardContainer(root, results), "result", [url, label, poster], node =>
+              resultCard(node, url, label, directResult, poster, msg, settings.newTab));
           }
         } else {
           cancelResolution();
@@ -554,6 +640,9 @@ export function start() {
     attributeFilter: ["href", "data-attrid", "content", "datetime"]
   });
   document.addEventListener("visibilitychange", schedule);
+  document.addEventListener("load", event => {
+    if (event.target instanceof HTMLImageElement && !own(event.target) && portrait(event.target)) schedule();
+  }, true);
   window.addEventListener("popstate", schedule);
   window.navigation?.addEventListener("currententrychange", schedule);
   window.addEventListener("pagehide", () => {
