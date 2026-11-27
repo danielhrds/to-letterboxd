@@ -19,6 +19,8 @@ To update, replace the files in the installed folder and click **Reload** in `ch
 
 ## Optional TMDB setup
 
-TMDB helps match titles without a film link or ID. Open **TMDB and cache** in the popup, paste your **API Read Access Token**, and click **Save and enable**. Adding the year helps distinguish remakes such as `Oldboy (2003)` and `Oldboy (2013)`. [TMDB API settings](https://www.themoviedb.org/settings/api)
+The extension works best with a TMDB **API Read Access Token**. It helps match films from titles alone and provides posters for Google search cards when available.
+
+Open **TMDB and cache** in the popup, paste your token, and click **Save and enable**. Adding the year helps distinguish remakes such as `Oldboy (2003)` and `Oldboy (2013)`. [TMDB API settings](https://www.themoviedb.org/settings/api)
 
 [Privacy](PRIVACY.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
