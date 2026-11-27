@@ -583,12 +583,32 @@ test("keeps local TMDB settings when updating from a different folder", {
   assert.equal(updated.id, id);
 
   const updatedPopup = await openPage(send);
-  await updatedPopup.navigate(popupUrl);
+  await updatedPopup.navigate(popupUrl + "?after-update#tmdb");
   await until(() => updatedPopup.value(
     `globalThis.chrome?.runtime?.getManifest().version === ${JSON.stringify(manifest.version)}`
   ));
   assert.equal(await updatedPopup.value(`chrome.storage.local.get(['settings', 'tmdbToken'])
     .then(({ settings, tmdbToken }) =>
       settings?.tmdbEnabled === true && settings.language === 'pt-BR' && tmdbToken === 'test-token-placeholder')`), true);
-  assert.equal(await updatedPopup.value("chrome.runtime.sendMessage({type: 'tmdbState'}).then(state => state.configured)"), true);
+  const tmdbControls = () => updatedPopup.value(`(() => {
+    const checkbox = document.querySelector('[name=tmdbEnabled]');
+    return [checkbox.checked, checkbox.disabled, document.querySelector('#remove-token').disabled];
+  })()`);
+  const storedTmdb = () => updatedPopup.value(`chrome.storage.local.get(['settings', 'tmdbToken'])
+    .then(({ settings, tmdbToken }) => [settings?.tmdbEnabled, tmdbToken === 'test-token-placeholder'])`);
+  await until(async () => (await tmdbControls()).join(",") === "true,false,false");
+  await updatedPopup.value("document.querySelector('[name=tmdbEnabled]').click()");
+  await until(async () => (await storedTmdb()).join(",") === "false,true");
+  assert.deepEqual(await tmdbControls(), [false, false, false]);
+
+  await updatedPopup.value(`
+    chrome.permissions.request = async () => true;
+    document.querySelector('[name=tmdbEnabled]').click();
+  `);
+  await until(async () => (await storedTmdb()).join(",") === "true,true");
+  assert.deepEqual(await tmdbControls(), [true, false, false]);
+
+  await updatedPopup.value("document.querySelector('#remove-token').click()");
+  await until(async () => (await tmdbControls()).join(",") === "false,true,true");
+  assert.deepEqual(await storedTmdb(), [false, false]);
 });

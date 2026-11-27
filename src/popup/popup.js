@@ -1,5 +1,6 @@
 import { browserMessages, messagesFor } from "../core/messages.js";
-import { DEFAULTS, readSettings, SETTINGS_KEY, TMDB_PERMISSION } from "../core/settings.js";
+import { DEFAULTS, readSettings, SETTINGS_KEY, TMDB_PERMISSION, TOKEN_KEY } from "../core/settings.js";
+import { validToken } from "../core/tmdb.js";
 import { localize } from "../ui/localize.js";
 
 const form = document.getElementById("settings");
@@ -18,7 +19,9 @@ let tmdbStateKey = "";
 let settingsStateKey = "";
 let settings = { ...DEFAULTS };
 let configured = false;
+let hasToken = false;
 let busy = false;
+let configurationRequest = 0;
 let settingsQueue = Promise.resolve();
 
 localize(messages);
@@ -36,15 +39,21 @@ function reportSettings(state) {
   settingsState.hidden = !state;
 }
 
+function reportConfiguration() {
+  if (!configured) return report(hasToken ? "invalidToken" : "notConfigured");
+  report(settings.tmdbEnabled ? "configured" : "tmdbDisabled");
+}
+
 function render() {
   for (const [key, value] of Object.entries(settings)) {
     if (typeof value === "boolean") controls[key].checked = value;
     else controls[key].value = value;
   }
   document.documentElement.dataset.theme = settings.theme;
+  controls.tmdbEnabled.checked = settings.tmdbEnabled && configured;
   controls.tmdbEnabled.disabled = busy || !configured;
   token.disabled = save.disabled = test.disabled = busy;
-  remove.disabled = busy || !configured;
+  remove.disabled = busy || !hasToken;
   if (languagePreference !== settings.language) {
     const preference = settings.language;
     languagePreference = preference;
@@ -55,6 +64,26 @@ function render() {
       report(tmdbStateKey);
       reportSettings(settingsStateKey);
     });
+  }
+}
+
+async function refreshConfiguration(reportState = false) {
+  const request = ++configurationRequest;
+  try {
+    const values = await chrome.storage.local.get([SETTINGS_KEY, TOKEN_KEY]);
+    if (request !== configurationRequest) return;
+    const next = readSettings(values[SETTINGS_KEY]);
+    const storedToken = values[TOKEN_KEY];
+    const nextConfigured = validToken(storedToken);
+    const changed = next.tmdbEnabled !== settings.tmdbEnabled ||
+      nextConfigured !== configured || Boolean(storedToken) !== hasToken;
+    settings = next;
+    configured = nextConfigured;
+    hasToken = Boolean(storedToken);
+    if (!busy && (reportState || changed)) reportConfiguration();
+    render();
+  } catch {
+    if (request === configurationRequest) report("unavailable");
   }
 }
 
@@ -83,13 +112,10 @@ async function tmdbAction(type, askPermission) {
       return;
     }
     const result = await chrome.runtime.sendMessage({ type, ...(entered && askPermission && { token: entered }) });
-    if (result.state === "connected" && type === "saveToken") {
-      configured = true;
+    if ((result.state === "connected" && type === "saveToken") ||
+        (result.state === "notConfigured" && type === "removeToken")) {
       token.value = "";
-    }
-    if (result.state === "notConfigured" && type === "removeToken") {
-      configured = false;
-      token.value = "";
+      await refreshConfiguration();
     }
     report(result.state);
   } catch {
@@ -125,7 +151,7 @@ restore.addEventListener("click", async () => {
   try {
     await storeSettings({}, true);
     reportSettings("restored");
-    report(configured ? "tmdbDisabled" : "notConfigured");
+    reportConfiguration();
   } catch {}
 });
 clear.addEventListener("click", async () => {
@@ -137,20 +163,8 @@ clear.addEventListener("click", async () => {
   }
 });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[SETTINGS_KEY]) return;
-  settings = readSettings(changes[SETTINGS_KEY].newValue);
-  render();
+  if (area !== "local" || (!changes[SETTINGS_KEY] && !changes[TOKEN_KEY])) return;
+  void refreshConfiguration(Boolean(changes[TOKEN_KEY]));
 });
 
-try {
-  const [values, state] = await Promise.all([
-    chrome.storage.local.get(SETTINGS_KEY),
-    chrome.runtime.sendMessage({ type: "tmdbState" })
-  ]);
-  settings = readSettings(values[SETTINGS_KEY]);
-  configured = state.configured === true;
-  report(configured ? (settings.tmdbEnabled ? "configured" : "tmdbDisabled") : "notConfigured");
-} catch {
-  report("unavailable");
-}
-render();
+await refreshConfiguration(true);

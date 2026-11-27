@@ -248,7 +248,6 @@ function connectMenu(port) {
 
 async function popupAction(message, revision) {
   const { settings, token } = await configuration();
-  if (message.type === "tmdbState") return { configured: validToken(token) };
   if (message.type === "clearCache") {
     await clearMatches();
     return { state: "cacheCleared" };
@@ -256,7 +255,7 @@ async function popupAction(message, revision) {
   if (message.type === "removeToken") {
     if (revision !== tokenRevision) return { state: "unavailable" };
     await chrome.storage.local.set({ [TOKEN_KEY]: null, [SETTINGS_KEY]: { ...settings, tmdbEnabled: false } });
-    if (revision === tokenRevision) await chrome.permissions.remove(TMDB_PERMISSION);
+    if (revision === tokenRevision) await chrome.permissions.remove(TMDB_PERMISSION).catch(() => {});
     return { state: "notConfigured" };
   }
   const candidate = message.token ?? token;
@@ -297,8 +296,8 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     void configuration().then(({ settings }) => reply(settings), () => reply(null));
     return true;
   }
-  if (sender.url !== popup ||
-      !["tmdbState", "saveToken", "testToken", "removeToken", "clearCache"].includes(message?.type)) return;
+  if (sender.url?.split(/[?#]/, 1)[0] !== popup ||
+      !["saveToken", "testToken", "removeToken", "clearCache"].includes(message?.type)) return;
   if (["saveToken", "removeToken"].includes(message.type)) tokenRevision++;
   void popupAction(message, tokenRevision).then(reply, () => reply({ state: "unavailable" }));
   return true;

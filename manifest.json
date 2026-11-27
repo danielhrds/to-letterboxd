@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "To Letterboxd",
   "description": "__MSG_extensionDescription__",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1lkyTXJSmTb43OETXYS3msUcPsC6PHVAhlxkxvis/IRxS7raP1k0qVTOPNpWRIM7sl+uBY1PsFIFiXVZY0v1kOAToQjXFRB1f+PV3qIta4pu9QccB57Br0yZEBwNkp5UxF21GmTs3Yf8czy3LxYlNg15hvDpSqmNhdlHxeXP1WMo+BsCAIK033WhPJRXn4ZVKeg56iejbDZGPr49ZFNRhJ3DEWMXdJHInaiwFb5ws+nyDp/eaVWnK4tHSLSFqmnWLwQC4CjRXbuEMBOvqYUnIDJV/1hndggOtdbJxFQHRIqp8U/9ydH63eh//nfx+urw4sVM/xr5+aMOnA4N61UVTQIDAQAB",
   "minimum_chrome_version": "123",
   "default_locale": "en",

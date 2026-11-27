@@ -169,10 +169,11 @@ test("rejects foreign senders and exposes only settings to Google", async () => 
     assert.deepEqual(chrome.runtime.onMessage.emit({ type: "googleSettings" }, google, resolve), [true]);
   });
   assert.deepEqual(settings, { ...DEFAULTS, tmdbEnabled: true });
-  const callback = () => assert.fail("A content script cannot read the token state");
+  const callback = () => assert.fail("A content script cannot remove the token");
   assert.deepEqual(chrome.runtime.onMessage.emit(
-    { type: "tmdbState" }, google, callback
+    { type: "removeToken" }, google, callback
   ), [undefined]);
+  assert.equal(local.values.tmdbToken, placeholder);
   assert.deepEqual(chrome.runtime.onMessage.emit(
     { type: "googleSettings" }, { ...google, url: "https://outside.test/search" }, callback
   ), [undefined]);
