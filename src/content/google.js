@@ -401,7 +401,7 @@ function link(url, label, newTab, withIcon = true) {
   anchor.rel = "noopener noreferrer";
   if (newTab) anchor.target = "_blank";
   if (withIcon) anchor.append(logo());
-  anchor.append(document.createTextNode(label));
+  anchor.append(label);
   return anchor;
 }
 
@@ -433,7 +433,7 @@ function resultCard(node, url, label, direct, { tmdbPoster, googlePoster }, msg,
   heading.className = "tl-result-heading";
   heading.setAttribute("role", "heading");
   heading.setAttribute("aria-level", "3");
-  heading.append(link(url, label, newTab, false));
+  heading.textContent = label;
   copy.append(provider, heading);
   if (!direct) {
     const description = document.createElement("p");
@@ -443,7 +443,10 @@ function resultCard(node, url, label, direct, { tmdbPoster, googlePoster }, msg,
   const attribution = document.createElement("small");
   attribution.textContent = msg("addedByExtension");
   copy.append(attribution);
-  node.append(copy);
+  const cardLink = link(url, copy, newTab, false);
+  cardLink.className = "tl-result-link";
+  cardLink.setAttribute("aria-label", label);
+  node.append(cardLink);
   const poster = tmdbPoster || googlePoster;
   if (poster) {
     const image = document.createElement("img");
@@ -461,7 +464,7 @@ function resultCard(node, url, label, direct, { tmdbPoster, googlePoster }, msg,
       }
     });
     image.src = poster;
-    node.append(image);
+    cardLink.append(image);
     node.dataset.hasPoster = "";
   }
 }

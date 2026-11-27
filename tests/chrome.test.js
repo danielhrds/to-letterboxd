@@ -236,7 +236,7 @@ test("installs in Chrome and updates Google controls across settings and result 
     return {
       separateLines: address.getBoundingClientRect().top >= name.getBoundingClientRect().bottom,
       background: getComputedStyle(card).backgroundColor,
-      titleColor: getComputedStyle(card.querySelector('a')).color,
+      titleColor: getComputedStyle(card.querySelector('.tl-result-heading')).color,
       font: getComputedStyle(card).fontFamily
     };
   })()`);
@@ -259,6 +259,27 @@ test("installs in Chrome and updates Google controls across settings and result 
     return poster?.naturalWidth > 0 && poster.currentSrc === native.currentSrc &&
       bounds.width === 76 && bounds.height === 112;
   })()`));
+  const posterCenter = await google.value(`(() => {
+    const card = document.querySelector('[data-to-letterboxd=result]');
+    const poster = card.querySelector('.tl-film-poster');
+    const link = poster.closest('a');
+    link.addEventListener('click', event => {
+      if (event.target !== poster) return;
+      event.preventDefault();
+      window.clickedPoster = { url: link.href, target: link.target };
+    }, { once: true });
+    const { left, top, width, height } = poster.getBoundingClientRect();
+    return { x: left + width / 2, y: top + height / 2 };
+  })()`);
+  await send("Input.dispatchMouseEvent", {
+    type: "mousePressed", ...posterCenter, button: "left", clickCount: 1
+  }, google.sessionId);
+  await send("Input.dispatchMouseEvent", {
+    type: "mouseReleased", ...posterCenter, button: "left", clickCount: 1
+  }, google.sessionId);
+  assert.deepEqual(await google.value("window.clickedPoster"), {
+    url: "https://letterboxd.com/tmdb/157336", target: "_blank"
+  });
   assert.equal(await google.value(`(() => {
     const panel = document.querySelector('[data-to-letterboxd=panel]');
     return panel.firstElementChild.getBoundingClientRect().width === panel.getBoundingClientRect().width;
@@ -274,7 +295,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(await popup.value("document.querySelector('#tmdb-state').textContent"), "TMDB ainda não configurado.");
   await until(() => google.value(
     "document.querySelector('[data-to-letterboxd=imdb] a')?.textContent === 'Ver no Letterboxd'"));
-  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-heading').textContent"),
     "Interstellar (2014) — Letterboxd");
   assert.equal(await google.value("document.querySelector('.tl-result-address').textContent"), "letterboxd.com › Filme");
   await popup.navigate(`${origin}/src/popup/privacy.html`);
@@ -377,7 +398,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.deepEqual(await links("imdb"), [taxi]);
   assert.equal(await google.value("document.querySelector('#film-heading').nextElementSibling?.dataset.toLetterboxd"), "panel");
   assert.equal(await google.value("document.querySelector('#film-web-result').firstElementChild?.dataset.toLetterboxd"), "result");
-  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-heading').textContent"),
     "Taxi Driver: Motorista de Táxi (1976) — Letterboxd");
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] p') === null"), true);
   assert.equal(await google.value(`(() => {
@@ -455,7 +476,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(async () => (await links("result"))[0] === aviator);
   assert.ok((await links("imdb")).includes(aviator));
   assert.deepEqual(await links("panel"), []);
-  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-heading').textContent"),
     "The Aviator's Wife (1981) — Letterboxd");
   await google.value(`(() => {
     const result = document.createElement('article');
