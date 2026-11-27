@@ -29,13 +29,13 @@ export function knownDestination(input) {
   });
 }
 
-export async function resolveFilm(input, { token, cached, signal, fetcher } = {}) {
+export async function resolveFilm(input, { token, cached, signal, fetcher, voteTiebreak = false } = {}) {
   const known = knownDestination(input);
   if (known) return known;
   if (!token || !input.title) return fallbackFor(input, token ? "noTitle" : "tmdbOff");
   try {
     signal.throwIfAborted();
-    const match = cached ?? await matchTmdb(input, token, signal, fetcher);
+    const match = cached ?? await matchTmdb(input, token, signal, fetcher, voteTiebreak);
     signal.throwIfAborted();
     if (!match.tmdbId) return fallbackFor(input, match.reason);
     return fallbackFor(input, null, {
@@ -45,7 +45,7 @@ export async function resolveFilm(input, { token, cached, signal, fetcher } = {}
       year: match.year,
       tmdbId: match.tmdbId,
       confidence: "high",
-      strategy: cached ? "cache" : "titleMatch",
+      strategy: cached ? "cache" : match.strategy,
       provider: "tmdb"
     });
   } catch (error) {

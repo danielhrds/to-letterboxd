@@ -128,6 +128,68 @@ test("distinguishes remakes and reads a second result page before selecting a fi
   assert.equal(incomplete.reason, "incompleteSearch");
 });
 
+test("breaks same-year ties only with a decisive lead over the runner-up", async () => {
+  const selection = parseSelection("Taxi Driver 1976");
+  async function resolveVotes(votes, input = selection) {
+    return resolveFilm(input, {
+      token: fakeToken,
+      signal: AbortSignal.timeout(1000),
+      voteTiebreak: true,
+      fetcher: async url => {
+        if (url.pathname === "/3/movie/2") {
+          return json({ id: 2, alternative_titles: { titles: [{ title: "Taxi Driver" }] }, translations: { translations: [] } });
+        }
+        if (url.pathname.startsWith("/3/movie/")) {
+          return json({
+            id: Number(url.pathname.split("/").at(-1)),
+            alternative_titles: { titles: [] }, translations: { translations: [] }
+          });
+        }
+        return page([
+          { ...movie(2, "Taksi Şoförü", 1976), vote_count: votes[1] },
+          { ...movie(3, "Taxi Driver", 1976), vote_count: votes[2] },
+          { ...movie(103, "Taxi Driver", 1976), vote_count: votes[0] }
+        ]);
+      }
+    });
+  }
+  const winner = await resolveVotes([60, 20, 19]);
+  assert.equal(winner.strategy, "voteTiebreak");
+  assert.equal(winner.url, "https://letterboxd.com/tmdb/103");
+  assert.equal((await resolveVotes([60, 21, 19])).reason, "ambiguous");
+  assert.equal((await resolveVotes([19, 0, 0])).reason, "ambiguous");
+  assert.equal((await resolveVotes([10000, undefined, 1])).reason, "ambiguous");
+  assert.equal((await resolveVotes([10000, 1, 1], { title: "Taxi Driver" })).reason, "ambiguous");
+});
+
+test("retries an unmatched title in English and resolves a unique film with zero votes", async () => {
+  const title = "Take Me Out to the Snowland";
+  const primary = "私をスキーに連れてって";
+  const input = { ...parseSelection("Take Me Out to the\u00a0Snowland (1987)"), locale: "pt-BR" };
+  const languages = [];
+  const result = await resolveFilm(input, {
+    token: fakeToken,
+    signal: AbortSignal.timeout(1000),
+    voteTiebreak: true,
+    fetcher: async url => {
+      if (url.pathname === "/3/movie/377620") {
+        return json({ id: 377620, alternative_titles: { titles: [{ title }] }, translations: { translations: [] } });
+      }
+      assert.equal(url.pathname, "/3/search/movie");
+      assert.equal(url.searchParams.get("query"), title);
+      const language = url.searchParams.get("language");
+      languages.push(language);
+      if (language === "pt-BR") return page([]);
+      assert.equal(language, "en-US");
+      assert.equal(url.searchParams.get("primary_release_year"), "1987");
+      return page([{ ...movie(377620, "Take Me Skiing", 1987, primary), vote_count: 0 }]);
+    }
+  });
+  assert.deepEqual(languages, ["pt-BR", "pt-BR", "en-US"]);
+  assert.equal(result.strategy, "titleMatch");
+  assert.equal(result.url, "https://letterboxd.com/tmdb/377620");
+});
+
 test("validates a regional release date when the primary year lookup finds no match", async () => {
   const result = await resolve({ title: "Release", locale: "pt-BR", year: 1982 }, async url => {
     if (url.pathname === "/3/search/movie") {

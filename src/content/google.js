@@ -319,6 +319,11 @@ function letterboxdFilmResult(results, titles, year) {
   return matches.size === 1 ? matches.values().next().value : null;
 }
 
+function canonicalFilmUrl(film, results) {
+  return film.canonicalUrl || (film.year &&
+    letterboxdFilmResult(results, [film.title, film.originalTitle], film.year)?.canonicalUrl);
+}
+
 function posterShape(image) {
   const { naturalWidth, naturalHeight } = image;
   return image.complete && naturalWidth >= 48 && naturalHeight >= 48 && naturalHeight >= naturalWidth * 0.9 &&
@@ -606,8 +611,7 @@ export function start() {
         const panel = filmPanel(movie, query, results);
         const film = pageFilm(movie, panel, results, query);
         if (film) {
-          const canonical = film.canonicalUrl || (film.year &&
-            letterboxdFilmResult(results, [film.title, film.originalTitle], film.year)?.canonicalUrl);
+          const canonical = canonicalFilmUrl(film, results);
           const fallback = searchUrl([film.title, film.year].filter(Boolean).join(" "));
           let direct = film.conflictingIds ? null : canonical || redirectUrl(film);
           let year = film.year;
@@ -664,9 +668,17 @@ export function start() {
   }
 
   if (!isGoogleSearch(location.href)) return;
-  chrome.runtime.onMessage.addListener((message, sender) => {
-    if (sender.id === chrome.runtime.id && message?.type === "refreshGoogleSettings") {
+  chrome.runtime.onMessage.addListener((message, sender, reply) => {
+    if (sender.id !== chrome.runtime.id || !isGoogleSearch(location.href)) return;
+    if (message?.type === "refreshGoogleSettings") {
       void refreshSettings(message.invalidate === true);
+    }
+    if (message?.type === "googleSelectionFilm") {
+      const results = webResults(resultsRoot());
+      const movie = structuredMovie();
+      const query = searchIdentity();
+      const film = pageFilm(movie, filmPanel(movie, query, results), results, query);
+      reply(film && { ...film, canonicalUrl: canonicalFilmUrl(film, results) });
     }
   });
   const observer = new MutationObserver(records => {

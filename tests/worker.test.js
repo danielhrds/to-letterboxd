@@ -70,7 +70,8 @@ globalThis.chrome = {
   tabs: {
     async create(properties) { tabs.push({ ...properties, operation: "create" }); },
     async update(tabId, properties) { tabs.push({ ...properties, tabId, operation: "update" }); },
-    async query() { return []; }
+    async query() { return []; },
+    async sendMessage() {}
   },
   i18n: { getMessage: key => key === "localeTag" ? "en" : "Open on Letterboxd", getUILanguage: () => "en-US" },
   permissions: {
@@ -82,9 +83,9 @@ globalThis.chrome = {
 
 await import("../src/background/service-worker.js");
 
-function choose(selectionText) {
+function choose(selectionText, pageUrl) {
   chrome.contextMenus.onClicked.emit(
-    { menuItemId: "open-letterboxd", selectionText }, { id: 11, windowId: 4 }
+    { menuItemId: "open-letterboxd", selectionText, pageUrl }, { id: 11, windowId: 4 }
   );
 }
 
@@ -177,6 +178,31 @@ test("rejects foreign senders and exposes only settings to Google", async () => 
   ), [undefined]);
 });
 
+test("reuses the matching film link from the current Google tab without TMDB", async context => {
+  await setup();
+  const page = "https://www.google.com/search?q=take+me+out+to+the+snowland";
+  const title = "Take Me Out to the Snowland";
+  const canonicalUrl = "https://letterboxd.com/film/take-me-out-to-the-snowland/";
+  const message = context.mock.method(chrome.tabs, "sendMessage", async (tabId, request, options) => {
+    assert.equal(tabId, 11);
+    assert.deepEqual(request, { type: "googleSelectionFilm" });
+    assert.deepEqual(options, { frameId: 0 });
+    return { title, year: 1987, canonicalUrl };
+  });
+  choose(title + " (1987)", page);
+  await setImmediate();
+  assert.equal(tabs.at(-1).url, canonicalUrl);
+  choose(title + " (1988)", page);
+  await setImmediate();
+  assert.equal(tabs.at(-1).url, "https://letterboxd.com/search/films/Take%20Me%20Out%20to%20the%20Snowland%20(1988)/");
+  choose("Something Else", page);
+  await setImmediate();
+  assert.equal(tabs.at(-1).url, "https://letterboxd.com/search/films/Something%20Else/");
+  choose(title + " (1987)", "https://outside.test/search");
+  await setImmediate();
+  assert.equal(message.mock.callCount(), 3);
+});
+
 test("cancels a Google lookup on disconnect", async context => {
   await setup({}, true);
   let signal;
@@ -192,6 +218,36 @@ test("cancels a Google lookup on disconnect", async context => {
   await setImmediate();
   assert.equal(signal.aborted, true);
   assert.deepEqual(google.messages, []);
+});
+
+test("uses the vote tiebreak from the selection menu without applying it to Google", async context => {
+  await setup({}, true);
+  let requests = 0;
+  context.mock.method(globalThis, "fetch", async url => {
+    requests++;
+    assert.equal(url.searchParams.get("primary_release_year"), "1976");
+    return Response.json({
+      page: 1, total_pages: 1,
+      results: [
+        { id: 1, title: "Taxi Driver", release_date: "1976-01-01", vote_count: 5 },
+        { id: 103, title: "Taxi Driver", release_date: "1976-02-09", vote_count: 10000 }
+      ]
+    });
+  });
+  choose("Taxi Driver 1976");
+  await setImmediate();
+  const selection = beginWaiting();
+  await setImmediate();
+  assert.equal(selection.messages[0].result.url, "https://letterboxd.com/tmdb/103");
+  assert.equal(selection.messages[0].result.strategy, "voteTiebreak");
+  selection.disconnect();
+
+  const google = connect("googleResolution", "https://www.google.com/search?q=Taxi+Driver+1976");
+  google.onMessage.emit({ type: "resolve", film: { title: "Taxi Driver", year: 1976, locale: "en-US" } });
+  await setImmediate();
+  assert.equal(google.messages[0].result.reason, "ambiguous");
+  google.disconnect();
+  assert.equal(requests, 2);
 });
 
 test("loads Google result posters for verified film IDs only when enabled", async context => {

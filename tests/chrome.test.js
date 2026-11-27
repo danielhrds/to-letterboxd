@@ -471,6 +471,13 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(async () => (await links("result"))[0] === aviatorCanonical);
   assert.equal(await google.value("document.querySelectorAll('[data-to-letterboxd=result]').length"), 1);
   assert.equal(await google.value("document.querySelector('#native-letterboxd a').href"), aviatorCanonical);
+  const filmInfo = await popup.value(`(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return chrome.tabs.sendMessage(tab.id, { type: 'googleSelectionFilm' }, { frameId: 0 });
+  })()`);
+  assert.equal(filmInfo.imdbId, "tt0080728");
+  assert.equal(filmInfo.year, 1981);
+  assert.equal(filmInfo.canonicalUrl, aviatorCanonical);
   await setTmdb("/aviator-poster.jpg");
   await until(() => google.value(
     "document.querySelector('.tl-film-poster')?.currentSrc === 'https://image.tmdb.org/t/p/w185/aviator-poster.jpg'"));

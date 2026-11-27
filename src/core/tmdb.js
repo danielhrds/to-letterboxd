@@ -5,6 +5,8 @@ const API = "https://api.themoviedb.org/3";
 const MAX_PAGES = 2;
 const MAX_DETAILS = 6;
 const MAX_REQUESTS = 6;
+const MIN_TIEBREAK_VOTES = 20;
+const TIEBREAK_VOTE_RATIO = 3;
 let activeRequests = 0;
 let retryAfter = 0;
 
@@ -123,18 +125,34 @@ async function enrich(candidate, locale, director, regionalYear, token, signal, 
   };
 }
 
-export async function matchTmdb(input, token, signal, fetcher) {
+function voteLeader(matches) {
+  if (matches.some(({ voteCount }) => !Number.isSafeInteger(voteCount) || voteCount < 0)) return null;
+  const [leader, runnerUp] = [...matches].sort((a, b) => b.voteCount - a.voteCount);
+  return leader.voteCount >= MIN_TIEBREAK_VOTES && leader.voteCount >= runnerUp.voteCount * TIEBREAK_VOTE_RATIO
+    ? leader : null;
+}
+
+export async function matchTmdb(input, token, signal, fetcher, voteTiebreak = false) {
+  const locale = language(input.locale);
+  const options = { locale, searchLocale: locale, voteTiebreak };
+  const match = await matchInLanguage(input, token, signal, fetcher, options);
+  return match.reason === "noMatch" && locale !== "en-US"
+    ? matchInLanguage(input, token, signal, fetcher, { ...options, searchLocale: "en-US" })
+    : match;
+}
+
+async function matchInLanguage(input, token, signal, fetcher, { locale, searchLocale, voteTiebreak }) {
   const titles = [input.title, input.originalTitle].map(value => cleanText(value)).filter(Boolean);
   const wanted = new Set(titles.map(normalizeTitle).filter(Boolean));
   if (!wanted.size) return { reason: "noTitle" };
-  const locale = language(input.locale);
   const year = filmYear(input.year);
+  const canUseVotes = voteTiebreak && Boolean(year);
   const director = normalizeTitle(input.director);
   const queries = [...new Set(titles.flatMap(title => [title, title.replace(/[’‘ʼ＇]/g, "'")]))];
   const candidates = new Map();
 
   async function collect(releaseYear) {
-    const params = { language: locale, include_adult: "false" };
+    const params = { language: searchLocale, include_adult: "false" };
     if (releaseYear) params.primary_release_year = String(releaseYear);
     const searches = await Promise.all(queries.map(query =>
       searchMovies({ ...params, query }, token, signal, fetcher)));
@@ -144,7 +162,7 @@ export async function matchTmdb(input, token, signal, fetcher) {
         const title = cleanText(movie?.title) || cleanText(movie?.original_title);
         if (!id || !title || movie.adult === true) continue;
         const candidate = candidates.get(id) ?? {
-          id, title, year: yearFromDate(movie.release_date), titles: []
+          id, title, year: yearFromDate(movie.release_date), voteCount: movie.vote_count, titles: []
         };
         candidate.titles.push(movie.title, movie.original_title);
         candidates.set(id, candidate);
@@ -164,7 +182,7 @@ export async function matchTmdb(input, token, signal, fetcher) {
     (regionalYear ? candidate.year && Math.abs(candidate.year - year) <= 1 : candidate.year === year));
   const exact = candidate => candidate.titles.some(title => wanted.has(normalizeTitle(title)));
   let matches = pool.filter(exact);
-  if (!director && !regionalYear && matches.length > 1) return { reason: "ambiguous" };
+  if (!canUseVotes && !director && !regionalYear && matches.length > 1) return { reason: "ambiguous" };
   if (director || regionalYear || !matches.length || pool.length > matches.length) {
     if (pool.length > MAX_DETAILS) return { reason: "ambiguous" };
     const expanded = [];
@@ -176,7 +194,11 @@ export async function matchTmdb(input, token, signal, fetcher) {
       (!director || candidate.directors.some(name => normalizeTitle(name) === director)) &&
       (!regionalYear || candidate.year === year || candidate.years.includes(year)));
   }
-  if (matches.length !== 1) return { reason: matches.length ? "ambiguous" : "noMatch" };
-  const match = matches[0];
-  return { tmdbId: match.id, title: match.title, year: match.year };
+  if (!matches.length) return { reason: "noMatch" };
+  const match = matches.length === 1 ? matches[0] : canUseVotes ? voteLeader(matches) : null;
+  if (!match) return { reason: "ambiguous" };
+  return {
+    tmdbId: match.id, title: match.title, year: match.year,
+    strategy: matches.length === 1 ? "titleMatch" : "voteTiebreak"
+  };
 }

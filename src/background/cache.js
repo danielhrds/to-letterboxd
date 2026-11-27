@@ -7,11 +7,13 @@ const MAX_ENTRIES = 50;
 let storageQueue = Promise.resolve();
 let revision = 0;
 
-export function cacheKey(input) {
-  return JSON.stringify([
+export function cacheKey(input, voteTiebreak = false) {
+  const parts = [
     normalizeTitle(input.title), normalizeTitle(input.originalTitle),
     input.year, normalizeTitle(input.director), input.locale
-  ]);
+  ];
+  if (voteTiebreak) parts.push("voteTiebreak");
+  return JSON.stringify(parts);
 }
 
 function enqueue(operation) {

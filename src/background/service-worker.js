@@ -1,5 +1,5 @@
 import { cacheKey, cacheRevision, clearMatches, readMatch, saveMatch } from "./cache.js";
-import { cleanText, filmYear, parseSelection } from "../core/film-input.js";
+import { cleanText, filmYear, normalizeTitle, parseSelection } from "../core/film-input.js";
 import { messagesFor } from "../core/messages.js";
 import { fallbackFor, knownDestination, resolveFilm } from "../core/resolver.js";
 import { readSettings, SETTINGS_KEY, TMDB_PERMISSION, TOKEN_KEY } from "../core/settings.js";
@@ -50,14 +50,35 @@ async function openInTab(url, tab, newTab) {
   }
 }
 
-async function openSelection(text, tab) {
+async function googleSelectionDestination(input, tab, pageUrl) {
+  if (!input.title || !Number.isInteger(tab?.id) || !isGoogleSearch(pageUrl)) return null;
+  let timer;
+  try {
+    const response = await Promise.race([
+      chrome.tabs.sendMessage(tab.id, { type: "googleSelectionFilm" }, { frameId: 0 }),
+      new Promise(resolve => { timer = setTimeout(resolve, 250); })
+    ]);
+    const film = googleInput(response);
+    const title = normalizeTitle(input.title);
+    if (!film?.year || film.conflictingIds || (input.year && input.year !== film.year) ||
+        ![film.title, film.originalTitle].map(normalizeTitle).includes(title)) return null;
+    return knownDestination(film);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function openSelection(text, tab, pageUrl) {
   const started = Date.now();
   const raw = cleanText(text, 1000);
   if (!raw) return;
   const { settings, token } = await configuration();
   if (!settings.contextMenu) return;
   const input = parseSelection(raw);
-  const known = settings.menuMode === "smart" ? knownDestination(input) : null;
+  const known = settings.menuMode === "smart"
+    ? knownDestination(input) ?? await googleSelectionDestination(input, tab, pageUrl) : null;
   const canResolve = settings.menuMode === "smart" && input.title && settings.tmdbEnabled &&
     validToken(token) && await chrome.permissions.contains(TMDB_PERMISSION);
   if (known || !canResolve || Date.now() - started >= WAIT_MS) {
@@ -93,11 +114,11 @@ async function tmdbAvailable({ settings, token }) {
   return settings.tmdbEnabled && validToken(token) && chrome.permissions.contains(TMDB_PERMISSION);
 }
 
-async function resolveShared(input, config, consumer) {
+async function resolveShared(input, config, consumer, voteTiebreak = false) {
   if (!await tmdbAvailable(config)) return fallbackFor(input, "tmdbOff");
   const { settings, token } = config;
   consumer.throwIfAborted();
-  const key = cacheKey(input);
+  const key = cacheKey(input, voteTiebreak);
   let job = inFlight.get(key);
   if (!job) {
     const generation = cacheRevision();
@@ -105,7 +126,7 @@ async function resolveShared(input, config, consumer) {
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(WAIT_MS)]);
     const promise = (async () => {
       const cached = await readMatch(key, settings.persistentCache).catch(() => null);
-      const result = await resolveFilm(input, { token, cached, signal });
+      const result = await resolveFilm(input, { token, cached, signal, voteTiebreak });
       if (result.status === "confirmedIdentity" && !cached && !signal.aborted) {
         void saveMatch(key, result, settings.persistentCache, generation).catch(() => {});
       }
@@ -216,7 +237,7 @@ function connectMenu(port) {
       const remaining = message.until - Date.now();
       const result = remaining > 0 && config.settings.menuMode === "smart"
         ? knownDestination(input) ?? await resolveShared(
-          input, config, AbortSignal.any([controller.signal, AbortSignal.timeout(remaining)]))
+          input, config, AbortSignal.any([controller.signal, AbortSignal.timeout(remaining)]), Boolean(input.year))
         : fallbackFor(input, "searchMode");
       if (!controller.signal.aborted) safePost(port, { type: "result", result });
     })().catch(() => {
@@ -259,7 +280,7 @@ async function popupAction(message, revision) {
 chrome.runtime.onInstalled.addListener(updateMenu);
 chrome.runtime.onStartup.addListener(updateMenu);
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === MENU_ID) void openSelection(info.selectionText, tab).catch(() => {});
+  if (info.menuItemId === MENU_ID) void openSelection(info.selectionText, tab, info.pageUrl).catch(() => {});
 });
 
 chrome.runtime.onConnect.addListener(port => {
