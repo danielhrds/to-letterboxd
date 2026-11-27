@@ -42,9 +42,6 @@
   "resultSearchPath": {
     "message": "letterboxd.com › Busca"
   },
-  "resultDescription": {
-    "message": "Informações, críticas e listas sobre o filme."
-  },
   "resultSearchDescription": {
     "message": "Encontre o filme na busca do Letterboxd."
   },
@@ -109,7 +106,7 @@
     "message": "TMDB e cache"
   },
   "tmdbEnabled": {
-    "message": "Usar o TMDB para localizar títulos"
+    "message": "Usar o TMDB"
   },
   "tokenLabel": {
     "message": "Token de leitura da API do TMDB"
@@ -145,7 +142,7 @@
     "message": "Extensão independente para o Letterboxd."
   },
   "privacyData": {
-    "message": "A extensão usa dados de filmes nas páginas compatíveis da Pesquisa Google e o texto selecionado quando você usa o menu de contexto. Ao abrir um resultado, o Letterboxd recebe o ID, o endereço do filme ou o texto da busca. Com o TMDB ativado, a extensão envia títulos, anos e idioma ao serviço quando precisa identificar um filme. A extensão não usa métricas, anúncios ou servidor próprio."
+    "message": "A extensão usa dados de filmes nas páginas compatíveis da Pesquisa Google e o texto selecionado quando você usa o menu de contexto. Ao abrir um resultado, o Letterboxd recebe o ID, o endereço do filme ou o texto da busca. Com o TMDB ativado, a extensão envia títulos, anos e idioma para identificar filmes e pode usar um ID para buscar o pôster. A extensão não usa métricas, anúncios ou servidor próprio."
   },
   "privacyToken": {
     "message": "O token do TMDB fica no armazenamento restrito às páginas da extensão e é enviado no cabeçalho de autorização à API do TMDB. Você pode removê-lo em TMDB e cache. O armazenamento local do Chrome não é um cofre criptografado."

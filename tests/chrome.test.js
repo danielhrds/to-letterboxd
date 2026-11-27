@@ -120,6 +120,9 @@ test("installs in Chrome and updates Google controls across settings and result 
   );
   const otherPages = {
     regular: regularHtml,
+    aviator: regularHtml.replace("Interstellar (2014) - IMDb", "The Aviator's Wife (1981)")
+      .replace("tt0816692", "tt0080728")
+      .replace('<div id="rso"', '<div role="region" aria-label="AI Overview">A 1981 film and a 2013 novel</div><div id="rso"'),
     "split-film": splitFilm,
     "split-series": splitFilm.replace("1976 ‧ Crime/Noir ‧ 1h 54m", "1976 ‧ Série de TV ‧ 54 min"),
     "film-without-sidebar": splitFilm.replace(/<aside id="rhs"[\s\S]+?<\/aside>/, "")
@@ -134,19 +137,25 @@ test("installs in Chrome and updates Google controls across settings and result 
       $1`)
   };
   const errors = [];
+  const requestedPosters = new Set();
   onEvent(event => {
     if (event.method === "Runtime.exceptionThrown") {
       const { exception, text } = event.params.exceptionDetails;
       errors.push(exception?.description ?? text);
     }
     if (event.method !== "Fetch.requestPaused") return;
-    const variant = new URL(event.params.request.url).searchParams.get("fixture");
-    const body = Buffer.from(otherPages[variant] ?? movieHtml).toString("base64");
+    const url = new URL(event.params.request.url);
+    const image = url.hostname === "image.tmdb.org";
+    const broken = image && url.pathname.endsWith("/broken-poster.jpg");
+    if (image) requestedPosters.add(url.pathname);
+    const body = image
+      ? '<svg xmlns="http://www.w3.org/2000/svg" width="185" height="278"><rect width="185" height="278" fill="red"/></svg>'
+      : otherPages[url.searchParams.get("fixture")] ?? movieHtml;
     void send("Fetch.fulfillRequest", {
       requestId: event.params.requestId,
-      responseCode: 200,
-      responseHeaders: [{ name: "Content-Type", value: "text/html; charset=utf-8" }],
-      body
+      responseCode: broken ? 404 : 200,
+      responseHeaders: [{ name: "Content-Type", value: image ? "image/svg+xml" : "text/html; charset=utf-8" }],
+      body: Buffer.from(broken ? "" : body).toString("base64")
     }, event.sessionId).catch(error => errors.push(error.message));
   });
   await send("Runtime.enable", {}, google.sessionId);
@@ -155,7 +164,10 @@ test("installs in Chrome and updates Google controls across settings and result 
   await send("Emulation.setDeviceMetricsOverride", {
     width: 420, height: 600, deviceScaleFactor: 1, mobile: false
   }, popup.sessionId);
-  await send("Fetch.enable", { patterns: [{ urlPattern: "https://www.google.com/search*", resourceType: "Document" }] }, google.sessionId);
+  await send("Fetch.enable", { patterns: [
+    { urlPattern: "https://www.google.com/search*", resourceType: "Document" },
+    { urlPattern: "https://image.tmdb.org/t/p/*", resourceType: "Image" }
+  ] }, google.sessionId);
   await popup.navigate(`${origin}/src/popup/popup.html`);
   await until(() => popup.value("document.querySelector('#settings input[name=googlePanel]')?.checked"));
   assert.equal(await popup.value("document.title"), "To Letterboxd");
@@ -206,8 +218,7 @@ test("installs in Chrome and updates Google controls across settings and result 
       cardWidth: card.getBoundingClientRect().width,
       resultsWidth: results.getBoundingClientRect().width,
       panelAfterTitle: header.nextElementSibling === panel,
-      panelGap: panel.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
-      panelAlignment: getComputedStyle(panel).justifyContent
+      panelGap: panel.getBoundingClientRect().top - header.getBoundingClientRect().bottom
     };
   })()`);
   assert.equal(placement.shortcutAfterResult, "imdb");
@@ -216,7 +227,6 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(placement.cardWidth, placement.resultsWidth);
   assert.equal(placement.panelAfterTitle, true);
   assert.ok(placement.panelGap >= 12);
-  assert.equal(placement.panelAlignment, "center");
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-provider strong').textContent"),
     "Letterboxd");
   const resultStyle = await google.value(`(() => {
@@ -245,8 +255,9 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(() => google.value(`(() => {
     const poster = document.querySelector('.tl-film-poster');
     const native = document.querySelector('#native-poster');
+    const bounds = poster?.getBoundingClientRect();
     return poster?.naturalWidth > 0 && poster.currentSrc === native.currentSrc &&
-      poster.getBoundingClientRect().height > poster.getBoundingClientRect().width;
+      bounds.width === 76 && bounds.height === 112;
   })()`));
   assert.equal(await google.value(`(() => {
     const panel = document.querySelector('[data-to-letterboxd=panel]');
@@ -287,7 +298,7 @@ test("installs in Chrome and updates Google controls across settings and result 
     anchor.append(heading);
     document.querySelector('#rso').append(item);
   `);
-  await until(async () => (await links("result")).length === 0);
+  await until(async () => (await links("result"))[0] === "https://letterboxd.com/film/interstellar/");
   assert.deepEqual(await links("panel"), ["https://letterboxd.com/film/interstellar/"]);
   assert.equal((await links("imdb")).length, 2);
 
@@ -336,9 +347,9 @@ test("installs in Chrome and updates Google controls across settings and result 
 
   await google.navigate("https://www.google.com/search?q=Interstellar&fixture=cast-only");
   await until(async () => await google.value("location.search.includes('fixture=cast-only')") &&
-    (await links("imdb")).length === 2);
+    (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
   assert.deepEqual(await links("panel"), []);
-  assert.deepEqual(await links("result"), []);
+  assert.equal((await links("imdb")).length, 2);
   await google.navigate("https://www.google.com/search?q=Interstellar&fixture=panel-imdb");
   await until(async () => (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
   assert.equal((await links("panel"))[0], "https://letterboxd.com/imdb/tt0816692");
@@ -368,6 +379,117 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(await google.value("document.querySelector('#film-web-result').firstElementChild?.dataset.toLetterboxd"), "result");
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
     "Taxi Driver: Motorista de Táxi (1976) — Letterboxd");
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] p') === null"), true);
+  assert.equal(await google.value(`(() => {
+    const row = document.querySelector('[data-to-letterboxd=imdb]');
+    const button = row.querySelector('a');
+    const rowBounds = row.getBoundingClientRect();
+    const buttonBounds = button.getBoundingClientRect();
+    const iconBounds = button.querySelector('img').getBoundingClientRect();
+    const label = document.createRange();
+    label.selectNode(button.lastChild);
+    const textBounds = label.getBoundingClientRect();
+    return Math.abs(rowBounds.left - buttonBounds.left) < 1 &&
+      Math.abs(buttonBounds.left + buttonBounds.right - iconBounds.left - textBounds.right) < 1 &&
+      Math.abs(buttonBounds.top + buttonBounds.bottom - iconBounds.top - iconBounds.bottom) < 1 &&
+      Math.abs(buttonBounds.top + buttonBounds.bottom - textBounds.top - textBounds.bottom) < 3;
+  })()`), true);
+  await google.value(`(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 80;
+    const img = document.createElement('img');
+    img.id = 'imdb-thumbnail';
+    img.alt = '';
+    img.setAttribute('aria-hidden', 'true');
+    img.src = canvas.toDataURL();
+    document.querySelector('#film-web-result').append(img);
+  })()`);
+  const usesGooglePoster = () => google.value(`(() => {
+    const poster = document.querySelector('.tl-film-poster');
+    return poster?.naturalWidth === 80 && poster.currentSrc === document.querySelector('#imdb-thumbnail').currentSrc;
+  })()`);
+  await until(usesGooglePoster);
+  assert.equal(await google.value("getComputedStyle(document.querySelector('.tl-film-poster')).objectFit"), "scale-down");
+
+  const worker = await until(async () => (await send("Target.getTargets")).targetInfos.find(target =>
+    target.type === "service_worker" && target.url.startsWith(origin)));
+  const { sessionId: workerSession } = await send("Target.attachToTarget", { targetId: worker.targetId, flatten: true });
+  const inWorker = async expression => {
+    const result = await send("Runtime.evaluate", { expression, awaitPromise: true }, workerSession);
+    assert.equal(result.exceptionDetails, undefined, result.exceptionDetails?.exception?.description);
+  };
+  await inWorker(`(() => {
+    const networkFetch = globalThis.fetch;
+    chrome.permissions.contains = async () => true;
+    globalThis.fetch = (input, options) => {
+      const url = new URL(input);
+      if (url.hostname !== 'api.themoviedb.org') return networkFetch(input, options);
+      if (url.pathname === '/3/find/tt0080728') {
+        return Promise.resolve(Response.json({ movie_results: [{ id: 1, poster_path: globalThis.testPosterPath }] }));
+      }
+      if (url.pathname !== '/3/find/tt0075314') throw new Error('Unexpected TMDB movie lookup');
+      return Promise.resolve(Response.json({ movie_results: [{ id: 103, poster_path: globalThis.testPosterPath }] }));
+    };
+  })()`);
+  const setTmdb = posterPath => inWorker(`(async () => {
+    globalThis.testPosterPath = ${JSON.stringify(posterPath)};
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...settings, tmdbEnabled: Boolean(globalThis.testPosterPath) },
+      tmdbToken: globalThis.testPosterPath ? 'test-token-placeholder-' + globalThis.testPosterPath.slice(1) : null
+    });
+  })()`);
+  await google.activate();
+  await setTmdb("/priority-poster.jpg");
+  await until(() => google.value(`(() => {
+    const poster = document.querySelector('.tl-film-poster');
+    return poster?.naturalWidth === 185 && poster.currentSrc === 'https://image.tmdb.org/t/p/w185/priority-poster.jpg';
+  })()`));
+  await setTmdb("/broken-poster.jpg");
+  await until(async () => requestedPosters.has("/t/p/w185/broken-poster.jpg") && await usesGooglePoster());
+  await setTmdb(null);
+
+  const aviator = "https://letterboxd.com/imdb/tt0080728";
+  const aviatorCanonical = "https://letterboxd.com/film/the-aviators-wife/";
+  await google.navigate("https://www.google.com/search?q=aviators+wife&fixture=aviator");
+  await until(async () => (await links("result"))[0] === aviator);
+  assert.ok((await links("imdb")).includes(aviator));
+  assert.deepEqual(await links("panel"), []);
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+    "The Aviator's Wife (1981) — Letterboxd");
+  await google.value(`(() => {
+    const result = document.createElement('article');
+    result.id = 'native-letterboxd';
+    const anchor = document.createElement('a');
+    const heading = document.createElement('h3');
+    anchor.href = 'https://letterboxd.com/film/the-aviators-wife/';
+    heading.textContent = "The Aviator's Wife (1981) directed by Éric Rohmer • Reviews, film + cast • Letterboxd";
+    anchor.append(heading);
+    result.append(anchor);
+    document.querySelector('#rso').append(result);
+  })()`);
+  await until(async () => (await links("result"))[0] === aviatorCanonical);
+  assert.equal(await google.value("document.querySelectorAll('[data-to-letterboxd=result]').length"), 1);
+  assert.equal(await google.value("document.querySelector('#native-letterboxd a').href"), aviatorCanonical);
+  await setTmdb("/aviator-poster.jpg");
+  await until(() => google.value(
+    "document.querySelector('.tl-film-poster')?.currentSrc === 'https://image.tmdb.org/t/p/w185/aviator-poster.jpg'"));
+  assert.deepEqual(await links("result"), [aviatorCanonical]);
+  await google.value(`(() => {
+    const item = document.createElement('article');
+    item.id = 'ambiguous-imdb';
+    const anchor = document.createElement('a');
+    const heading = document.createElement('h3');
+    anchor.href = 'https://www.imdb.com/title/tt0364569/';
+    heading.textContent = "The Aviator's Wife (2003) — IMDb";
+    anchor.append(heading);
+    item.append(anchor);
+    document.querySelector('#rso').append(item);
+  })()`);
+  await until(async () => (await links("result")).length === 0);
+  await setTmdb(null);
+  await google.value("document.querySelector('#ambiguous-imdb').remove(); document.querySelector('#first-imdb').remove()");
+  await until(async () => (await links("result"))[0] === aviatorCanonical);
 
   await google.navigate("https://www.google.com/search?q=Taxi+Driver&fixture=split-series");
   await until(async () => await google.value("location.search.includes('fixture=split-series')") &&

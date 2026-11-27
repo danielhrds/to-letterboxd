@@ -194,6 +194,42 @@ test("cancels a Google lookup on disconnect", async context => {
   assert.deepEqual(google.messages, []);
 });
 
+test("loads Google result posters for verified film IDs only when enabled", async context => {
+  await setup({}, true);
+  let requests = 0;
+  const googleUrl = "https://www.google.com/search?q=Taxi+Driver+1976";
+  const film = { imdbId: "tt0075314" };
+  const movie = { id: 103, imdb_id: film.imdbId, poster_path: "/sample.jpg" };
+  const result = "https://image.tmdb.org/t/p/w185/sample.jpg";
+  let lookup = { movie_results: [movie] };
+  context.mock.method(globalThis, "fetch", async (url, options) => {
+    requests++;
+    assert.equal(options.headers.Authorization, `Bearer ${placeholder}`);
+    if (url.pathname === "/3/movie/103") return Response.json(movie);
+    assert.equal(url.href, "https://api.themoviedb.org/3/find/tt0075314?external_source=imdb_id");
+    return Response.json(lookup);
+  });
+  async function poster(input) {
+    const port = connect("googleResolution", googleUrl);
+    port.onMessage.emit({ type: "poster", film: input });
+    await setImmediate();
+    port.disconnect();
+    return port.messages[0];
+  }
+  assert.deepEqual(await poster(film), { type: "result", result });
+  assert.deepEqual(await poster({ tmdbId: "103", ...film }), { type: "result", result });
+  lookup = { movie_results: [], tv_results: [movie] };
+  assert.deepEqual(await poster(film), { type: "result", result: null });
+  lookup = { movie_results: [{ ...movie, poster_path: "//outside.test/poster.jpg" }] };
+  assert.deepEqual(await poster(film), { type: "result", result: null });
+  assert.equal(await poster({ imdbId: "https://outside.test/tt0075314" }), undefined);
+  await setup({ googleResult: false }, true);
+  assert.deepEqual(await poster(film), { type: "result", result: null });
+  await setup();
+  assert.deepEqual(await poster(film), { type: "result", result: null });
+  assert.equal(requests, 4);
+});
+
 test("resolves a title in one waiting tab and reuses the cached identity", async context => {
   await setup({}, true);
   let requests = 0;

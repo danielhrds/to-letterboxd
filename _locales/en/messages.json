@@ -42,9 +42,6 @@
   "resultSearchPath": {
     "message": "letterboxd.com › Search"
   },
-  "resultDescription": {
-    "message": "Film details, reviews, and lists."
-  },
   "resultSearchDescription": {
     "message": "Find the film in Letterboxd search."
   },
@@ -109,7 +106,7 @@
     "message": "TMDB and cache"
   },
   "tmdbEnabled": {
-    "message": "Use TMDB to find titles"
+    "message": "Use TMDB"
   },
   "tokenLabel": {
     "message": "TMDB API Read Access Token"
@@ -145,7 +142,7 @@
     "message": "Independent extension for Letterboxd."
   },
   "privacyData": {
-    "message": "The extension uses film details from supported Google Search pages and text you select when you use the context menu. Opening a result sends its ID, film URL or search text to Letterboxd. With TMDB enabled, the extension sends titles, years and language to TMDB when it needs to identify a film. The extension has no analytics, advertising or developer-operated server."
+    "message": "The extension uses film details from supported Google Search pages and text you select when you use the context menu. Opening a result sends its ID, film URL or search text to Letterboxd. With TMDB enabled, the extension sends titles, years and language to identify films and may use an ID to fetch a film poster. The extension has no analytics, advertising or developer-operated server."
   },
   "privacyToken": {
     "message": "The TMDB token stays in trusted extension storage. It is sent in the authorization header to the TMDB API. You can remove it under TMDB and cache. Chrome's local storage is not an encrypted vault."

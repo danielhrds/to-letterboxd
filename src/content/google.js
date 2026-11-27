@@ -130,6 +130,7 @@ function searchIdentity() {
   const trimmedTitle = parsed.title?.replace(tags, "");
   const movieTitle = stripped !== raw ? withoutTag.title : trimmedTitle !== parsed.title ? trimmedTitle : "";
   return {
+    title: parsed.title,
     year: parsed.year || withoutTag.year,
     movieTitle,
     titles: new Set([parsed.title, trimmedTitle, withoutTag.title]
@@ -178,6 +179,7 @@ function headerImdbLinks(main, title) {
 
 function filmPanel(movie, query, results) {
   const movieNames = [movie?.name, ...[movie?.alternateName].flat()].map(normalizeTitle).filter(Boolean);
+  let matchesSeries = false;
   for (const panel of panelCandidates()) {
     const name = panel.matches(MOVIE) ? [...panel.querySelectorAll('[itemprop="name"]')]
       .find(node => node.closest("[itemscope]") === panel && !node.closest(EXCLUDED)) : null;
@@ -193,10 +195,16 @@ function filmPanel(movie, query, results) {
     const titleElement = heading ?? (name && !name.matches("meta") ? name : null);
     const headingData = parseSelection(attrText(name || titleElement));
     const title = cleanText(headingData.title, 180);
-    if (!title || panel.querySelector('[data-attrid^="kc:/tv/"], [itemtype$="/TVSeries"]')) continue;
+    if (!title) continue;
     const descriptor = text(panel.querySelector('[data-attrid="subtitle"], [data-attrid="type"]'), 150);
-    if (SERIES.test(descriptor)) continue;
     const year = yearIn(attrText(panel.querySelector(RELEASE))) || yearIn(descriptor) || headingData.year;
+    const seriesSelector = '[data-attrid^="kc:/tv/"], [itemtype$="/TVSeries"]';
+    if (SERIES.test(descriptor) || panel.matches(seriesSelector) || panel.querySelector(seriesSelector)) {
+      const names = [title, title.split(/[:–—]/, 1)[0]].map(titleWithoutArticle);
+      matchesSeries ||= (!query.year || !year || query.year === year) &&
+        names.includes(titleWithoutArticle(query.movieTitle || query.title));
+      continue;
+    }
     const runtime = /\b\d+\s*(?:h\b|min\b|m\b)/i.test(descriptor);
     const split = splitPanelDetails(panel, year, runtime);
     const directors = [...(split?.sidebar ?? panel).querySelectorAll(DIRECTOR)].map(node =>
@@ -231,7 +239,7 @@ function filmPanel(movie, query, results) {
       film: { ...data, ...links, title, year: movieYear, director: data.director || director, conflictingIds }
     };
   }
-  return null;
+  return matchesSeries ? { matchesSeries } : null;
 }
 
 function resultIdentity(heading) {
@@ -239,27 +247,30 @@ function resultIdentity(heading) {
   return parseSelection(label);
 }
 
+const titleWithoutArticle = title => normalizeTitle(title).replace(/^the /, "");
+
 function imdbFilmResult(results, query) {
-  const title = normalizeTitle(query.movieTitle);
+  const title = titleWithoutArticle(query.movieTitle || query.title);
   if (!title) return null;
   const matches = new Map();
   for (const { anchor, heading, ids } of results) {
     if (ids?.source !== "imdb") continue;
     const candidate = resultIdentity(heading);
     if (!candidate.year || (query.year && query.year !== candidate.year) ||
-        normalizeTitle(candidate.title) !== title) continue;
+        titleWithoutArticle(candidate.title) !== title) continue;
     const result = anchor.closest("[data-snhf], .g, article") ?? anchor;
     if (SERIES.test(text(result, 350))) continue;
     matches.set(ids.imdbId, { title: candidate.title, year: candidate.year, imdbId: ids.imdbId });
   }
   if (matches.size === 1) return matches.values().next().value;
-  return matches.size > 1 ? { title: query.movieTitle, year: query.year, conflictingIds: true } : null;
+  return matches.size > 1
+    ? { title: query.movieTitle || query.title, year: query.year, conflictingIds: true } : null;
 }
 
 function pageFilm(movie, panel, results, query) {
-  if (panel) {
+  if (panel?.film) {
     const film = panel.film;
-    if (!film.year || film.conflictingIds || film.canonicalUrl || film.tmdbId) return film;
+    if (!film.year || film.conflictingIds || film.tmdbId) return film;
     const titles = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
     const matches = new Map();
     for (const { heading, ids } of results) {
@@ -278,6 +289,7 @@ function pageFilm(movie, panel, results, query) {
   const film = metadata(movie);
   if ([film.title, film.originalTitle].some(title => query.titles.has(normalizeTitle(title))) &&
       (!query.year || query.year === film.year)) return film;
+  if (panel?.matchesSeries) return null;
   const matches = new Map();
   for (const { heading, ids } of results) {
     if (ids?.source !== "tmdb") continue;
@@ -285,41 +297,37 @@ function pageFilm(movie, panel, results, query) {
     if (!query.titles.has(normalizeTitle(candidate.title)) || (query.year && query.year !== candidate.year)) continue;
     matches.set(ids.tmdbId, { title: candidate.title, year: candidate.year, tmdbId: ids.tmdbId });
   }
-  return matches.size === 1 ? matches.values().next().value : matches.size ? null : imdbFilmResult(results, query);
+  if (matches.size === 1) return matches.values().next().value;
+  if (matches.size) return null;
+  const imdb = imdbFilmResult(results, query);
+  if (imdb) return imdb.conflictingIds && !query.movieTitle ? null : imdb;
+  return letterboxdFilmResult(results, [query.movieTitle || query.title], query.year);
 }
 
-function existingFilm(results, film) {
-  const names = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
-  const linkedById = results.some(({ ids }) => ids?.source === "letterboxd" &&
-    ((ids.imdbId && ids.imdbId === film.imdbId) || (ids.tmdbId && ids.tmdbId === film.tmdbId)));
-  const similar = results.flatMap(({ heading, ids }) => {
-    if (!ids?.canonicalUrl) return [];
-    if (ids.canonicalUrl === film.canonicalUrl) return [{ url: ids.canonicalUrl, year: film.year }];
+function letterboxdFilmResult(results, titles, year) {
+  const names = titles.map(titleWithoutArticle).filter(Boolean);
+  const matches = new Map();
+  for (const { heading, ids } of results) {
+    if (!ids?.canonicalUrl) continue;
     const label = text(heading);
     const titled = label.match(/^(.+?\(\d{4}\))\s*(?:directed by|dirigid[oa] por|[•|–—-])\s+.+$/iu)?.[1];
     const candidate = parseSelection(titled ?? label.replace(/\s*[•|–—-]\s*Letterboxd\s*$/i, ""));
-    if (names.includes(normalizeTitle(candidate.title)) &&
-        (!candidate.year || !film.year || candidate.year === film.year)) {
-      return [{ url: ids.canonicalUrl, year: candidate.year }];
+    if (candidate.year && (!year || candidate.year === year) && names.includes(titleWithoutArticle(candidate.title))) {
+      matches.set(ids.canonicalUrl, { title: candidate.title, year: candidate.year, canonicalUrl: ids.canonicalUrl });
     }
-    return [];
-  });
-  const confirmed = [...new Set(similar.filter(item => film.year && item.year === film.year)
-    .map(item => item.url))];
-  return {
-    duplicate: linkedById || similar.length > 0,
-    canonicalUrl: confirmed.length === 1 ? confirmed[0] : null
-  };
+  }
+  return matches.size === 1 ? matches.values().next().value : null;
 }
 
-function portrait(image) {
+function posterShape(image) {
   const { naturalWidth, naturalHeight } = image;
-  return image.complete && naturalWidth >= 48 && naturalHeight >= naturalWidth * 1.2 &&
+  return image.complete && naturalWidth >= 48 && naturalHeight >= 48 && naturalHeight >= naturalWidth * 0.9 &&
     naturalHeight <= naturalWidth * 2.5;
 }
 
 function posterSource(image) {
-  if (!portrait(image) || own(image) || image.closest(EXCLUDED)) return null;
+  if (!posterShape(image) || own(image) || !image.getClientRects().length ||
+      image.closest('dialog, [role="dialog"], [hidden], [aria-roledescription="carousel"]')) return null;
   const source = image.currentSrc;
   if (!source || source.length > 500000) return null;
   if (/^data:image\/(?:png|jpeg|webp|gif|avif);base64,/i.test(source)) return source;
@@ -332,13 +340,15 @@ function posterSource(image) {
 
 function filmPoster(film, panel, results, root) {
   const titles = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
-  const imageLabel = image => cleanText(image.alt ||
-    image.closest("[aria-label]")?.getAttribute("aria-label"));
+  const imageLabels = image => [cleanText(image.alt), cleanText(image.getAttribute("aria-label")),
+    cleanText(image.parentElement?.closest("[aria-label]")?.getAttribute("aria-label"))].filter(Boolean);
+  const generic = /^(?:pôster|poster|film poster|movie poster|thumbnail|miniatura)$/i;
   const matchesTitle = label => {
     const normalized = ` ${normalizeTitle(label)} `;
     return !/\b(trailer|teaser|cast|elenco)\b/i.test(label) &&
       titles.some(title => normalized.includes(` ${title} `));
   };
+  let thumbnail;
   for (const { anchor, heading, ids } of results) {
     const match = (ids?.imdbId && ids.imdbId === film.imdbId) ||
       (ids?.tmdbId && ids.tmdbId === film.tmdbId) ||
@@ -349,10 +359,12 @@ function filmPoster(film, panel, results, root) {
       group = group.parentElement;
     }
     for (const image of group.querySelectorAll("img")) {
-      const label = imageLabel(image);
-      if (label && !matchesTitle(label) && !/^(?:pôster|poster|film poster|movie poster)$/i.test(label)) continue;
+      const labels = imageLabels(image);
+      if (labels.length && !labels.every(label => generic.test(label)) && !labels.some(matchesTitle)) continue;
       const source = posterSource(image);
-      if (source) return source;
+      if (!source) continue;
+      if (image.naturalHeight >= image.naturalWidth * 1.2) return source;
+      thumbnail ??= source;
     }
   }
 
@@ -360,12 +372,14 @@ function filmPoster(film, panel, results, root) {
   const main = panel?.anchor?.closest('main, [role="main"]');
   for (const area of new Set([localPanel, main])) {
     for (const image of area?.querySelectorAll("img") ?? []) {
-      if ((area === main && image.closest("#rso")) || !matchesTitle(imageLabel(image))) continue;
+      if ((area === main && image.closest("#rso")) || !imageLabels(image).some(matchesTitle)) continue;
       const source = posterSource(image);
-      if (source) return source;
+      if (!source) continue;
+      if (image.naturalHeight >= image.naturalWidth * 1.2) return source;
+      thumbnail ??= source;
     }
   }
-  return null;
+  return thumbnail ?? null;
 }
 
 function logo(size = 16) {
@@ -396,7 +410,7 @@ function panelLink(url, label, newTab) {
   return anchor;
 }
 
-function resultCard(node, url, label, direct, poster, msg, newTab) {
+function resultCard(node, url, label, direct, { tmdbPoster, googlePoster }, msg, newTab) {
   const copy = document.createElement("div");
   copy.className = "tl-result-copy";
   const provider = document.createElement("div");
@@ -415,12 +429,17 @@ function resultCard(node, url, label, direct, poster, msg, newTab) {
   heading.setAttribute("role", "heading");
   heading.setAttribute("aria-level", "3");
   heading.append(link(url, label, newTab, false));
-  const description = document.createElement("p");
-  description.textContent = msg(direct ? "resultDescription" : "resultSearchDescription");
+  copy.append(provider, heading);
+  if (!direct) {
+    const description = document.createElement("p");
+    description.textContent = msg("resultSearchDescription");
+    copy.append(description);
+  }
   const attribution = document.createElement("small");
   attribution.textContent = msg("addedByExtension");
-  copy.append(provider, heading, description, attribution);
+  copy.append(attribution);
   node.append(copy);
+  const poster = tmdbPoster || googlePoster;
   if (poster) {
     const image = document.createElement("img");
     image.className = "tl-film-poster";
@@ -428,6 +447,14 @@ function resultCard(node, url, label, direct, poster, msg, newTab) {
     image.height = 112;
     image.alt = "";
     image.referrerPolicy = "no-referrer";
+    image.addEventListener("error", () => {
+      if (googlePoster && image.getAttribute("src") !== googlePoster) {
+        image.src = googlePoster;
+      } else {
+        image.remove();
+        delete node.dataset.hasPoster;
+      }
+    });
     image.src = poster;
     node.append(image);
     node.dataset.hasPoster = "";
@@ -438,7 +465,7 @@ export function start() {
   let settings;
   let messages;
   let timer;
-  let pending;
+  const requests = new Map();
   let settingsRequest = 0;
   let invalidateResults = false;
   let suspended = false;
@@ -447,10 +474,14 @@ export function start() {
   let palette;
   const widgets = new Map();
 
-  function cancelResolution() {
-    const port = pending?.port;
-    pending = null;
-    port?.disconnect();
+  function cancelRequest(type) {
+    const request = requests.get(type);
+    requests.delete(type);
+    request?.port?.disconnect();
+  }
+
+  function cancelRequests() {
+    for (const type of requests.keys()) cancelRequest(type);
   }
 
   function schedule() {
@@ -471,7 +502,7 @@ export function start() {
       const localized = messages && settings?.language === next.language
         ? messages : await messagesFor(next.language);
       if (request !== settingsRequest) return;
-      if (invalidateResults || settings?.tmdbEnabled !== next.tmdbEnabled) cancelResolution();
+      if (invalidateResults || settings?.tmdbEnabled !== next.tmdbEnabled) cancelRequests();
       invalidateResults = false;
       settings = next;
       messages = localized;
@@ -479,9 +510,12 @@ export function start() {
     } catch {}
   }
 
-  function requestFilm(key, film) {
+  function requestFilm(type, key, film) {
+    if (requests.get(type)?.key === key) return requests.get(type).result;
+    cancelRequest(type);
+    if (document.hidden) return null;
     const request = { key };
-    pending = request;
+    requests.set(type, request);
     try {
       const port = chrome.runtime.connect({ name: "googleResolution" });
       request.port = port;
@@ -490,13 +524,13 @@ export function start() {
         request.port = null;
       });
       port.onMessage.addListener(message => {
-        if (pending !== request || message.type !== "result") return;
+        if (requests.get(type) !== request || message.type !== "result") return;
         request.result = message.result;
         request.port = null;
         port.disconnect();
         schedule();
       });
-      port.postMessage({ type: "resolve", film });
+      port.postMessage({ type, film });
     } catch {
       request.port?.disconnect();
       request.port = null;
@@ -526,9 +560,10 @@ export function start() {
 
   function render() {
     const keep = new Set();
+    let needsPoster = false;
     if (page !== location.href) {
       page = location.href;
-      cancelResolution();
+      cancelRequests();
     }
     if (settings && messages && isGoogleSearch(page)) {
       const msg = messages.get;
@@ -571,26 +606,21 @@ export function start() {
         const panel = filmPanel(movie, query, results);
         const film = pageFilm(movie, panel, results, query);
         if (film) {
-          const existing = existingFilm(results, film);
-          const canonical = film.canonicalUrl || existing.canonicalUrl;
+          const canonical = film.canonicalUrl || (film.year &&
+            letterboxdFilmResult(results, [film.title, film.originalTitle], film.year)?.canonicalUrl);
           const fallback = searchUrl([film.title, film.year].filter(Boolean).join(" "));
           let direct = film.conflictingIds ? null : canonical || redirectUrl(film);
           let year = film.year;
           if (!direct && !film.conflictingIds && settings.tmdbEnabled &&
-              ((panel?.anchor && settings.googlePanel) || (root && results.length && !existing.duplicate && settings.googleResult))) {
+              ((panel?.anchor && settings.googlePanel) || (root && results.length && settings.googleResult))) {
             const input = { ...film, locale: document.documentElement.lang || chrome.i18n.getUILanguage() };
-            const key = JSON.stringify(input);
-            if (pending?.key !== key) {
-              cancelResolution();
-              if (!document.hidden) requestFilm(key, input);
-            }
-            const resolved = pending?.result;
+            const resolved = requestFilm("resolve", JSON.stringify(input), input);
             if (resolved?.status === "confirmedIdentity") {
               direct = redirectUrl(resolved);
               year ||= resolved.year;
             }
           } else {
-            cancelResolution();
+            cancelRequest("resolve");
           }
           if (panel?.anchor && settings.googlePanel) {
             setWidget(keep, "panel", panel.anchor, "panel", [direct, fallback], node => {
@@ -598,24 +628,34 @@ export function start() {
               if (direct && !canonical) node.append(link(fallback, msg("searchInstead"), settings.newTab, false));
             });
           }
-          if (settings.googleResult && root && results.length && !existing.duplicate) {
+          if (settings.googleResult && root && results.length) {
             const directResult = direct && year;
             const displayTitle = [film.title, year ? `(${year})` : null].filter(Boolean).join(" ");
             const label = msg(directResult ? "resultTitle" : "resultSearchTitle", displayTitle);
             const url = directResult ? direct : fallback;
-            const poster = directResult ? filmPoster({ ...film, canonicalUrl: canonical }, panel, results, root) : null;
-            setWidget(keep, "result", cardContainer(root, results), "result", [url, label, poster], node =>
-              resultCard(node, url, label, directResult, poster, msg, settings.newTab));
+            const posters = { tmdbPoster: null, googlePoster: null };
+            if (directResult) {
+              const identity = { ...film, ...filmLink(direct), canonicalUrl: canonical };
+              posters.googlePoster = filmPoster(identity, panel, results, root);
+              const { imdbId, tmdbId } = identity;
+              if (settings.tmdbEnabled && (imdbId || tmdbId)) {
+                needsPoster = true;
+                posters.tmdbPoster = requestFilm("poster", JSON.stringify([imdbId, tmdbId]), { imdbId, tmdbId }) ?? null;
+              }
+            }
+            setWidget(keep, "result", cardContainer(root, results), "result", [url, label, posters], node =>
+              resultCard(node, url, label, directResult, posters, msg, settings.newTab));
           }
         } else {
-          cancelResolution();
+          cancelRequest("resolve");
         }
       } else {
-        cancelResolution();
+        cancelRequest("resolve");
       }
     } else {
-      cancelResolution();
+      cancelRequest("resolve");
     }
+    if (!needsPoster) cancelRequest("poster");
     for (const [key, widget] of widgets) {
       if (keep.has(key)) continue;
       widget.node.remove();
@@ -641,7 +681,7 @@ export function start() {
   });
   document.addEventListener("visibilitychange", schedule);
   document.addEventListener("load", event => {
-    if (event.target instanceof HTMLImageElement && !own(event.target) && portrait(event.target)) schedule();
+    if (event.target instanceof HTMLImageElement && !own(event.target) && posterShape(event.target)) schedule();
   }, true);
   window.addEventListener("popstate", schedule);
   window.navigation?.addEventListener("currententrychange", schedule);
@@ -650,7 +690,7 @@ export function start() {
     settingsRequest++;
     clearTimeout(timer);
     timer = null;
-    cancelResolution();
+    cancelRequests();
   });
   window.addEventListener("pageshow", event => {
     if (!event.persisted) return;

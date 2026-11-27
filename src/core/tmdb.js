@@ -1,5 +1,5 @@
 import { cleanText, filmYear, normalizeTitle, yearFromDate } from "./film-input.js";
-import { tmdbId } from "./urls.js";
+import { imdbId, tmdbId } from "./urls.js";
 
 const API = "https://api.themoviedb.org/3";
 const MAX_PAGES = 2;
@@ -54,6 +54,24 @@ async function request(path, token, signal, params = {}, fetcher = fetch) {
 export async function validateToken(token, signal, fetcher) {
   const data = await request("/authentication", token, signal, {}, fetcher);
   return data?.success === true;
+}
+
+export async function findMoviePoster(input, token, signal) {
+  const tmdb = tmdbId(input.tmdbId);
+  const imdb = imdbId(input.imdbId);
+  let movie;
+  if (tmdb) {
+    movie = await request(`/movie/${tmdb}`, token, signal);
+    if (tmdbId(movie?.id) !== tmdb || (imdb && imdbId(movie?.imdb_id) !== imdb)) return null;
+  } else if (imdb) {
+    const data = await request(`/find/${imdb}`, token, signal, { external_source: "imdb_id" });
+    if (!Array.isArray(data?.movie_results) || data.movie_results.length !== 1) return null;
+    movie = data.movie_results[0];
+  }
+  if (!tmdbId(movie?.id)) return null;
+  const path = movie?.poster_path;
+  return typeof path === "string" && /^\/[a-z0-9_-]{1,120}\.(?:jpg|jpeg|png|webp)$/i.test(path)
+    ? `https://image.tmdb.org/t/p/w185${path}` : null;
 }
 
 function searchPage(data, page) {

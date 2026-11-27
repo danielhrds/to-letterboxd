@@ -3,7 +3,7 @@ import { cleanText, filmYear, parseSelection } from "../core/film-input.js";
 import { messagesFor } from "../core/messages.js";
 import { fallbackFor, knownDestination, resolveFilm } from "../core/resolver.js";
 import { readSettings, SETTINGS_KEY, TMDB_PERMISSION, TOKEN_KEY } from "../core/settings.js";
-import { validToken, validateToken } from "../core/tmdb.js";
+import { findMoviePoster, validToken, validateToken } from "../core/tmdb.js";
 import { filmLink, imdbId, isGoogleSearch, searchUrl, tmdbId } from "../core/urls.js";
 
 const MENU_ID = "open-letterboxd";
@@ -89,10 +89,13 @@ function abortJobs() {
   inFlight.clear();
 }
 
-async function resolveShared(input, { settings, token }, consumer) {
-  if (!settings.tmdbEnabled || !validToken(token) || !await chrome.permissions.contains(TMDB_PERMISSION)) {
-    return fallbackFor(input, "tmdbOff");
-  }
+async function tmdbAvailable({ settings, token }) {
+  return settings.tmdbEnabled && validToken(token) && chrome.permissions.contains(TMDB_PERMISSION);
+}
+
+async function resolveShared(input, config, consumer) {
+  if (!await tmdbAvailable(config)) return fallbackFor(input, "tmdbOff");
+  const { settings, token } = config;
   consumer.throwIfAborted();
   const key = cacheKey(input);
   let job = inFlight.get(key);
@@ -158,21 +161,31 @@ function connectGoogle(port) {
     googlePorts.delete(port);
   });
   port.onMessage.addListener(message => {
-    if (message?.type !== "resolve" || started || controller.signal.aborted) return;
-    const input = googleInput(message.film);
-    if (!input || knownDestination(input)) return;
+    if (started || controller.signal.aborted || !["resolve", "poster"].includes(message?.type)) return;
+    const lookup = message.type === "poster";
+    const input = lookup
+      ? { imdbId: imdbId(message.film?.imdbId), tmdbId: tmdbId(message.film?.tmdbId) }
+      : googleInput(message.film);
+    if (lookup ? !input.imdbId && !input.tmdbId : !input || knownDestination(input)) return;
     started = true;
     void (async () => {
       const config = await configuration();
       if (controller.signal.aborted) return;
-      const { settings } = config;
-      const result = settings.googlePanel || settings.googleResult
-        ? await resolveShared(input, config, controller.signal)
-        : fallbackFor(input, "disabled");
+      const { settings, token } = config;
+      let result = null;
+      if (lookup) {
+        if (settings.googleResult && await tmdbAvailable(config)) {
+          const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(WAIT_MS)]);
+          result = await findMoviePoster(input, token, signal);
+        }
+      } else {
+        result = settings.googlePanel || settings.googleResult
+          ? await resolveShared(input, config, controller.signal) : fallbackFor(input, "disabled");
+      }
       if (!controller.signal.aborted) safePost(port, { type: "result", result });
     })().catch(() => {
       if (!controller.signal.aborted) safePost(port, {
-        type: "result", result: fallbackFor(input, "unavailable")
+        type: "result", result: lookup ? null : fallbackFor(input, "unavailable")
       });
     });
   });

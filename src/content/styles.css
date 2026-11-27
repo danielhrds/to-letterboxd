@@ -40,15 +40,21 @@
   display: block;
   margin-block: 4px 14px;
   font-size: 13px;
+  text-align: start;
 }
 
 [data-to-letterboxd="imdb"] > a {
+  box-sizing: border-box;
+  justify-content: center;
   min-block-size: 30px;
   padding: 4px 10px;
   border: 1px solid var(--tl-border);
   border-radius: 999px;
   color: var(--tl-text);
+  line-height: 1.2;
 }
+
+[data-to-letterboxd="imdb"] > a > img { display: block; }
 
 [data-to-letterboxd="imdb"] > a:hover {
   background: var(--tl-surface);
@@ -121,6 +127,6 @@
   inline-size: 76px;
   block-size: 112px;
   max-inline-size: none;
-  object-fit: cover;
+  object-fit: scale-down;
   border-radius: 8px;
 }
