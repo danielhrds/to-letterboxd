@@ -3,16 +3,18 @@ import { messagesFor } from "../core/messages.js";
 import { filmLink, isGoogleSearch, redirectUrl, searchUrl } from "../core/urls.js";
 
 const OWN = "[data-to-letterboxd]";
-const FILM_PANEL = '.kp-wholepage, .knowledge-panel, [data-attrid="kc:/film/film:knowledge panel"]';
+const SPLIT_PANEL = ".kp-wholepage-osrp";
+const FILM_PANEL = `.kp-wholepage, ${SPLIT_PANEL}, .knowledge-panel, [data-attrid="kc:/film/film:knowledge panel"]`;
 const PANEL = `${FILM_PANEL}, #rhs, #kp-wp-tab-overview`;
 const MOVIE = '[itemscope][itemtype$="/Movie"]';
 const DIRECTOR = '[data-attrid="kc:/film/film:director"], [itemprop="director"]';
-const RELEASE = '[data-attrid="kc:/film/film:release date"], [itemprop="datePublished"]';
+const RELEASE = '[data-attrid="kc:/film/film:release date"], [data-attrid="kc:/film/film:theatrical region aware release date"], [itemprop="datePublished"]';
 const FILM_TITLE = '[data-attrid="title"], [data-attrid="kc:/film/film:title"]';
 const FILM_DETAILS = '[data-attrid^="kc:/film/film:"]:not([data-attrid="kc:/film/film:title"])';
 const MAIN_HEADING = 'h1, [role="heading"][aria-level="1"]';
 const RESULT_HEADING = 'h3, [role="heading"][aria-level="3"]';
 const EXCLUDED = 'dialog, [role="dialog"], [hidden], [aria-hidden="true"], [aria-roledescription="carousel"]';
+const SERIES = /\b(tv series|television series|série de televisão|série de tv|temporadas?|seasons?|episodes?|episódios?)\b/i;
 
 const text = (node, limit) => cleanText(node?.textContent, limit);
 const own = node => node?.nodeType === 1 && node.closest(OWN);
@@ -47,15 +49,31 @@ function outsideInlineLayout(anchor, boundary) {
   return anchor;
 }
 
+function hasSingleResultHeading(element) {
+  return [...element.querySelectorAll(RESULT_HEADING)].filter(heading => !own(heading)).length === 1;
+}
+
 function resultAnchor(anchor, heading, root) {
   const group = anchor.closest(".g, [data-snhf], article");
   if (group && group !== root && root.contains(group)) return outsideInlineLayout(group, root);
   let block = anchor.contains(heading) ? anchor : heading;
   while (block.parentElement && block.parentElement !== root &&
-      block.parentElement.querySelectorAll(RESULT_HEADING).length === 1) {
+      hasSingleResultHeading(block.parentElement)) {
     block = block.parentElement;
   }
   return outsideInlineLayout(block, root);
+}
+
+function cardContainer(root, results) {
+  if (!root.querySelector("#rhs")) return root;
+  const first = results.find(({ anchor }) => anchor.closest("[data-snhf], .g, article")) ?? results[0];
+  let slot = resultAnchor(first.anchor, first.heading, root);
+  for (let parent = slot.parentElement; parent && parent !== root &&
+      !parent.querySelector("#rhs") && hasSingleResultHeading(parent);
+      parent = parent.parentElement) {
+    if (getComputedStyle(parent).display !== "contents") slot = parent;
+  }
+  return slot.matches(`a, button, ${RESULT_HEADING}`) ? root : slot;
 }
 
 function typeIsMovie(node) {
@@ -104,13 +122,17 @@ function metadata(movie, preferredTitle) {
 }
 
 function searchIdentity() {
-  const raw = new URL(location.href).searchParams.get("q") ?? "";
+  const raw = (new URL(location.href).searchParams.get("q") ?? "").trim();
   const tags = /\s+(?:film|movie|filme)$/i;
   const parsed = parseSelection(raw);
-  const withoutTag = parseSelection(raw.replace(tags, ""));
+  const stripped = raw.replace(tags, "");
+  const withoutTag = parseSelection(stripped);
+  const trimmedTitle = parsed.title?.replace(tags, "");
+  const movieTitle = stripped !== raw ? withoutTag.title : trimmedTitle !== parsed.title ? trimmedTitle : "";
   return {
     year: parsed.year || withoutTag.year,
-    titles: new Set([parsed.title, parsed.title?.replace(tags, ""), withoutTag.title]
+    movieTitle,
+    titles: new Set([parsed.title, trimmedTitle, withoutTag.title]
       .map(normalizeTitle).filter(Boolean))
   };
 }
@@ -134,7 +156,27 @@ function panelCandidates() {
   return panels;
 }
 
-function filmPanel(movie, query) {
+function splitPanelDetails(panel, year, runtime) {
+  if (!panel.matches(SPLIT_PANEL) || !year || !runtime || panel.closest("#search, #rhs")) return null;
+  const main = panel.closest('main, [role="main"]');
+  const sidebar = main?.querySelector("#rhs");
+  if (!sidebar?.querySelector(DIRECTOR)) return null;
+  const sidebarYear = yearIn(attrText(sidebar.querySelector(RELEASE)));
+  return sidebarYear && Math.abs(year - sidebarYear) > 1 ? null : { main, sidebar };
+}
+
+function headerImdbLinks(main, title) {
+  const names = [title, title.split(/[:–—]/, 1)[0]].map(normalizeTitle).filter(Boolean);
+  return [...main.querySelectorAll('a[href*="imdb.com"]')].flatMap(anchor => {
+    if (anchor.closest(`#search, #rso, ${EXCLUDED}`) || filmLink(anchor.href)?.source !== "imdb") return [];
+    const label = anchor.getAttribute("aria-label") ?? anchor.querySelector("[aria-label]")?.getAttribute("aria-label");
+    const normalized = normalizeTitle(label);
+    return normalized.endsWith(" imdb") && names.some(name => normalized.startsWith(`${name} `))
+      ? [anchor.href] : [];
+  });
+}
+
+function filmPanel(movie, query, results) {
   const movieNames = [movie?.name, ...[movie?.alternateName].flat()].map(normalizeTitle).filter(Boolean);
   for (const panel of panelCandidates()) {
     const name = panel.matches(MOVIE) ? [...panel.querySelectorAll('[itemprop="name"]')]
@@ -153,14 +195,21 @@ function filmPanel(movie, query) {
     const title = cleanText(headingData.title, 180);
     if (!title || panel.querySelector('[data-attrid^="kc:/tv/"], [itemtype$="/TVSeries"]')) continue;
     const descriptor = text(panel.querySelector('[data-attrid="subtitle"], [data-attrid="type"]'), 150);
-    if (/\b(tv series|television series|série de televisão|série de tv|temporadas?|seasons?)\b/i.test(descriptor)) continue;
-    const directors = [...panel.querySelectorAll(DIRECTOR)].map(node =>
+    if (SERIES.test(descriptor)) continue;
+    const year = yearIn(attrText(panel.querySelector(RELEASE))) || yearIn(descriptor) || headingData.year;
+    const runtime = /\b\d+\s*(?:h\b|min\b|m\b)/i.test(descriptor);
+    const split = splitPanelDetails(panel, year, runtime);
+    const directors = [...(split?.sidebar ?? panel).querySelectorAll(DIRECTOR)].map(node =>
       text(node.querySelector('[itemprop="name"], a') ?? node, 120).replace(/^(?:directors?|direç[ãa]o|diretores?)\s*:\s*/i, ""));
     const director = directors.length === 1 ? directors[0] : "";
-    const year = yearIn(attrText(panel.querySelector(RELEASE))) || yearIn(descriptor) || headingData.year;
     const linkedMovie = movieNames.includes(normalizeTitle(title));
+    const matchingHeadline = panel.matches(SPLIT_PANEL) && year && runtime && results.some(({ heading, ids }) => {
+      if (ids?.source !== "imdb") return false;
+      const candidate = resultIdentity(heading);
+      return candidate.year === year && normalizeTitle(candidate.title) === normalizeTitle(title);
+    });
     const filmEvidence = panel.matches(MOVIE) || panel.querySelector(FILM_DETAILS) ||
-      linkedMovie || (director && year && /\b\d+\s*(?:h\b|min\b|m\b)/i.test(descriptor));
+      split || linkedMovie || matchingHeadline || (director && year && runtime);
     if (!filmEvidence) continue;
     const data = linkedMovie ? metadata(movie, title) : {};
     const sourceLinks = [...panel.querySelectorAll("a[href]")].filter(anchor =>
@@ -168,6 +217,7 @@ function filmPanel(movie, query) {
       (anchor.matches('[itemprop="sameAs"]') || /^(IMDb|TMDB|Letterboxd)$/i.test(text(anchor))));
     const links = combineLinks([
       ...sourceLinks.map(anchor => anchor.href),
+      ...(split ? headerImdbLinks(split.main, title) : []),
       data.canonicalUrl,
       data.imdbId && redirectUrl({ imdbId: data.imdbId }),
       data.tmdbId && redirectUrl({ tmdbId: data.tmdbId })
@@ -189,18 +239,40 @@ function resultIdentity(heading) {
   return parseSelection(label);
 }
 
+function imdbFilmResult(results, query) {
+  const title = normalizeTitle(query.movieTitle);
+  if (!title) return null;
+  const matches = new Map();
+  for (const { anchor, heading, ids } of results) {
+    if (ids?.source !== "imdb") continue;
+    const candidate = resultIdentity(heading);
+    if (!candidate.year || (query.year && query.year !== candidate.year) ||
+        normalizeTitle(candidate.title) !== title) continue;
+    const result = anchor.closest("[data-snhf], .g, article") ?? anchor;
+    if (SERIES.test(text(result, 350))) continue;
+    matches.set(ids.imdbId, { title: candidate.title, year: candidate.year, imdbId: ids.imdbId });
+  }
+  if (matches.size === 1) return matches.values().next().value;
+  return matches.size > 1 ? { title: query.movieTitle, year: query.year, conflictingIds: true } : null;
+}
+
 function pageFilm(movie, panel, results, query) {
   if (panel) {
     const film = panel.film;
-    if (!film.year || film.conflictingIds || film.canonicalUrl || film.imdbId || film.tmdbId) return film;
+    if (!film.year || film.conflictingIds || film.canonicalUrl || film.tmdbId) return film;
     const titles = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
-    const matches = new Set();
+    const matches = new Map();
     for (const { heading, ids } of results) {
       if (ids?.source !== "imdb") continue;
       const candidate = resultIdentity(heading);
-      if (candidate.year === film.year && titles.includes(normalizeTitle(candidate.title))) matches.add(ids.imdbId);
+      if (candidate.year !== film.year) continue;
+      if (film.imdbId ? ids.imdbId === film.imdbId : titles.includes(normalizeTitle(candidate.title))) {
+        matches.set(ids.imdbId, candidate.title);
+      }
     }
-    return matches.size === 1 ? { ...film, imdbId: matches.values().next().value } : film;
+    if (matches.size !== 1) return film;
+    const [imdbId, imdbTitle] = matches.entries().next().value;
+    return { ...film, imdbId, originalTitle: film.originalTitle || imdbTitle };
   }
   if (!query.titles.size) return null;
   const film = metadata(movie);
@@ -213,7 +285,7 @@ function pageFilm(movie, panel, results, query) {
     if (!query.titles.has(normalizeTitle(candidate.title)) || (query.year && query.year !== candidate.year)) continue;
     matches.set(ids.tmdbId, { title: candidate.title, year: candidate.year, tmdbId: ids.tmdbId });
   }
-  return matches.size === 1 ? matches.values().next().value : null;
+  return matches.size === 1 ? matches.values().next().value : matches.size ? null : imdbFilmResult(results, query);
 }
 
 function existingFilm(results, film) {
@@ -240,20 +312,53 @@ function existingFilm(results, film) {
   };
 }
 
+function logo(size = 16) {
+  const icon = document.createElement("img");
+  icon.width = icon.height = size;
+  icon.alt = "";
+  icon.src = chrome.runtime.getURL("assets/icons/16.png");
+  return icon;
+}
+
 function link(url, label, newTab, withIcon = true) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.rel = "noopener noreferrer";
   if (newTab) anchor.target = "_blank";
-  if (withIcon) {
-    const icon = document.createElement("img");
-    icon.width = icon.height = 16;
-    icon.alt = "";
-    icon.src = chrome.runtime.getURL("assets/icons/16.png");
-    anchor.append(icon);
-  }
+  if (withIcon) anchor.append(logo());
   anchor.append(document.createTextNode(label));
   return anchor;
+}
+
+function panelLink(url, label, newTab) {
+  const anchor = link(url, label, newTab);
+  const arrow = document.createElement("span");
+  arrow.className = "tl-panel-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  arrow.textContent = "↗";
+  anchor.append(arrow);
+  return anchor;
+}
+
+function resultCard(node, url, label, direct, msg, newTab) {
+  const provider = document.createElement("div");
+  provider.className = "tl-result-provider";
+  const details = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = "Letterboxd";
+  const address = document.createElement("small");
+  address.textContent = msg(direct ? "resultFilmPath" : "resultSearchPath");
+  details.append(name, address);
+  provider.append(logo(), details);
+  const heading = document.createElement("div");
+  heading.setAttribute("role", "heading");
+  heading.setAttribute("aria-level", "3");
+  heading.append(link(url, label, newTab, false));
+  const description = document.createElement("p");
+  description.textContent = msg(direct ? "resultDescription" : "resultSearchDescription");
+  const attribution = document.createElement("small");
+  attribution.textContent = msg("addedByExtension");
+  node.append(provider, heading, description, attribution);
 }
 
 export function start() {
@@ -378,7 +483,7 @@ export function start() {
       if (settings.googlePanel || settings.googleResult) {
         const movie = structuredMovie();
         const query = searchIdentity();
-        const panel = filmPanel(movie, query);
+        const panel = filmPanel(movie, query, results);
         const film = pageFilm(movie, panel, results, query);
         if (film) {
           const existing = existingFilm(results, film);
@@ -404,7 +509,7 @@ export function start() {
           }
           if (panel?.anchor && settings.googlePanel) {
             setWidget(keep, "panel", panel.anchor, "panel", [direct, fallback], node => {
-              node.append(link(direct || fallback, msg(direct ? "menuOpen" : "searchOnLetterboxd"), settings.newTab));
+              node.append(panelLink(direct || fallback, msg(direct ? "menuOpen" : "searchOnLetterboxd"), settings.newTab));
               if (direct && !canonical) node.append(link(fallback, msg("searchInstead"), settings.newTab, false));
             });
           }
@@ -412,15 +517,9 @@ export function start() {
             const directResult = direct && year;
             const displayTitle = [film.title, year ? `(${year})` : null].filter(Boolean).join(" ");
             const label = msg(directResult ? "resultTitle" : "resultSearchTitle", displayTitle);
-            setWidget(keep, "result", root, "result", [directResult ? direct : fallback, label], node => {
-              const heading = document.createElement("div");
-              heading.append(link(directResult ? direct : fallback, label, settings.newTab));
-              const description = document.createElement("p");
-              description.textContent = msg(directResult ? "resultDescription" : "resultSearchDescription");
-              const attribution = document.createElement("small");
-              attribution.textContent = msg("addedByExtension");
-              node.append(heading, description, attribution);
-            });
+            const url = directResult ? direct : fallback;
+            setWidget(keep, "result", cardContainer(root, results), "result", [url, label], node =>
+              resultCard(node, url, label, directResult, msg, settings.newTab));
           }
         } else {
           cancelResolution();

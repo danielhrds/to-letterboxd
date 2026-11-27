@@ -111,6 +111,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   const google = await openPage(send);
   const popup = await openPage(send);
   const html = await readFile(fixture, "utf8");
+  const splitFilm = await readFile(new URL("./fixtures/google-split-film.html", import.meta.url), "utf8");
   const fakeGoogle = "https://www.google.com/search?q=Interstellar";
   const regularHtml = html.replace(/<aside id="rhs">[\s\S]+?<\/aside>/, "");
   const movieHtml = html.replace(
@@ -119,6 +120,11 @@ test("installs in Chrome and updates Google controls across settings and result 
   );
   const otherPages = {
     regular: regularHtml,
+    "split-film": splitFilm,
+    "split-series": splitFilm.replace("1976 ‧ Crime/Noir ‧ 1h 54m", "1976 ‧ Série de TV ‧ 54 min"),
+    "film-without-sidebar": splitFilm.replace(/<aside id="rhs"[\s\S]+?<\/aside>/, "")
+      .replaceAll("Taxi Driver: Motorista de Táxi", "Interstellar")
+      .replaceAll("Taxi Driver", "Interstellar").replaceAll("1976", "2014").replaceAll("tt0075314", "tt0816692"),
     "cast-only": movieHtml.replace('<h2 data-attrid="title">Interstellar</h2>', "")
       .replace('id="cast-heading" role="heading" aria-level="2"', 'id="cast-heading" role="heading" aria-level="1"'),
     "panel-imdb": movieHtml.replace('<a href="https://www.themoviedb.org/movie/157336-interstellar">TMDB</a>', ""),
@@ -211,6 +217,12 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(placement.panelAfterTitle, true);
   assert.ok(placement.panelGap >= 12);
   assert.equal(placement.panelAlignment, "center");
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] .tl-result-provider strong').textContent"),
+    "Letterboxd");
+  assert.equal(await google.value(`(() => {
+    const panel = document.querySelector('[data-to-letterboxd=panel]');
+    return panel.firstElementChild.getBoundingClientRect().width === panel.getBoundingClientRect().width;
+  })()`), true);
   const selectLanguage = language => popup.value(`(() => {
     const select = document.querySelector('select[name=language]');
     select.value = ${JSON.stringify(language)};
@@ -223,7 +235,8 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(() => google.value(
     "document.querySelector('[data-to-letterboxd=imdb] a')?.textContent === 'Ver no Letterboxd'"));
   assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
-    "Interstellar (2014) no Letterboxd");
+    "Interstellar (2014) — Letterboxd");
+  assert.equal(await google.value("document.querySelector('.tl-result-provider small').textContent"), "letterboxd.com › Filme");
   await popup.navigate(`${origin}/src/popup/privacy.html`);
   await until(() => popup.value("document.title === 'Privacidade' && document.documentElement.lang === 'pt-BR'"));
   await popup.navigate(`${origin}/src/resolving/resolving.html`);
@@ -262,7 +275,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   await until(() => google.value("document.querySelector('[data-to-letterboxd=panel]')?.dataset.theme === 'dark'"));
   assert.equal(await popup.value("getComputedStyle(document.documentElement).backgroundColor"), "rgb(20, 24, 28)");
   assert.equal(await google.value(
-    "getComputedStyle(document.querySelector('[data-to-letterboxd=panel] a')).color"), "rgb(64, 188, 244)");
+    "getComputedStyle(document.querySelector('[data-to-letterboxd=panel] a')).color"), "rgb(238, 242, 246)");
   await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await until(async () => !await menuExists());
   assert.equal((await links("panel")).length, 1);
@@ -306,6 +319,32 @@ test("installs in Chrome and updates Google controls across settings and result 
   await google.navigate("https://www.google.com/search?q=Interstellar+%282014%29+film&fixture=tmdb-result");
   await until(async () => (await links("result"))[0] === "https://letterboxd.com/tmdb/157336");
   assert.deepEqual(await links("panel"), []);
+
+  await google.navigate("https://www.google.com/search?q=Interstellar+filme+2014&fixture=regular");
+  await until(async () => (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
+  assert.deepEqual(await links("panel"), []);
+  await google.navigate("https://www.google.com/search?q=Interstellar+filme+2010&fixture=regular");
+  await until(async () => await google.value("location.search.includes('2010')") && (await links("imdb")).length === 2);
+  assert.deepEqual(await links("result"), []);
+  await google.navigate("https://www.google.com/search?q=Interstellar&fixture=film-without-sidebar");
+  await until(async () => (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
+  assert.equal((await links("panel"))[0], "https://letterboxd.com/imdb/tt0816692");
+
+  const taxi = "https://letterboxd.com/imdb/tt0075314";
+  await google.navigate("https://www.google.com/search?q=Taxi+Driver+1976+filme&fixture=split-film");
+  await until(async () => (await links("result"))[0] === taxi);
+  assert.equal((await links("panel"))[0], taxi);
+  assert.deepEqual(await links("imdb"), [taxi]);
+  assert.equal(await google.value("document.querySelector('#film-heading').nextElementSibling?.dataset.toLetterboxd"), "panel");
+  assert.equal(await google.value("document.querySelector('#film-web-result').firstElementChild?.dataset.toLetterboxd"), "result");
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+    "Taxi Driver: Motorista de Táxi (1976) — Letterboxd");
+
+  await google.navigate("https://www.google.com/search?q=Taxi+Driver&fixture=split-series");
+  await until(async () => await google.value("location.search.includes('fixture=split-series')") &&
+    (await links("imdb")).length === 1);
+  assert.deepEqual(await links("panel"), []);
+  assert.deepEqual(await links("result"), []);
   await until(menuExists);
   assert.deepEqual(errors, []);
 });

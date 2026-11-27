@@ -63,6 +63,14 @@ test("accepts official film links and unwraps only a Google redirect", () => {
   assert.equal(isGoogleSearch("https://www.google.com/search/elsewhere"), false);
 });
 
+test("accepts localized IMDb title pages and keeps other IMDb paths excluded", () => {
+  assert.equal(filmLink("https://www.imdb.com/pt/title/tt0075314/").imdbId, "tt0075314");
+  assert.equal(filmLink("/url?q=https%3A%2F%2Fwww.imdb.com%2Fes-es%2Ftitle%2Ftt0075314%2F",
+    "https://www.google.com/search").imdbId, "tt0075314");
+  assert.equal(filmLink("https://www.imdb.com/pt/name/nm0000217/"), null);
+  assert.equal(filmLink("https://www.imdb.com/pt/title/tt0075314/episodes/"), null);
+});
+
 test("encodes Unicode and special characters without changing the search host or path", () => {
   assert.equal(searchUrl("花樣年華 / ‘?&’"), "https://letterboxd.com/search/films/%E8%8A%B1%E6%A8%A3%E5%B9%B4%E8%8F%AF%20%2F%20%E2%80%98%3F%26%E2%80%99/");
   assert.equal(new URL(searchUrl("..")).pathname, "/search/films/");

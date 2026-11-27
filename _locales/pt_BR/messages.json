@@ -21,7 +21,7 @@
     "message": "Buscar pelo título"
   },
   "resultTitle": {
-    "message": "$TITLE$ no Letterboxd",
+    "message": "$TITLE$ — Letterboxd",
     "placeholders": {
       "title": {
         "content": "$1"
@@ -36,8 +36,14 @@
       }
     }
   },
+  "resultFilmPath": {
+    "message": "letterboxd.com › Filme"
+  },
+  "resultSearchPath": {
+    "message": "letterboxd.com › Busca"
+  },
   "resultDescription": {
-    "message": "Abra o filme no Letterboxd."
+    "message": "Informações, críticas e listas sobre o filme."
   },
   "resultSearchDescription": {
     "message": "Encontre o filme na busca do Letterboxd."

@@ -34,7 +34,7 @@ export function filmLink(value, base) {
   if (!url) return null;
   const { hostname, pathname } = url;
   if (imdbHosts.has(hostname)) {
-    const id = imdbId(pathname.match(/^\/title\/(tt\d+)\/?$/i)?.[1]);
+    const id = imdbId(pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?title\/(tt\d+)\/?$/i)?.[1]);
     return id ? { imdbId: id, source: "imdb" } : null;
   }
   if (tmdbHosts.has(hostname)) {
