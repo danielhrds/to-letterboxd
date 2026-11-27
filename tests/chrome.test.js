@@ -120,8 +120,25 @@ test("installs in Chrome and updates Google controls across settings and result 
     '<aside id="rhs">',
     '<div id="secondary"></div><aside id="rhs">'
   );
+  const resnaisUrl = "https://letterboxd.com/film/je-taime-je-taime/";
+  const frenchTitle = "Je T'Aime, Je T'Aime";
+  const localizedTitle = "Eu te Amo, Eu te Amo";
+  const resnaisResult = '<article><h3><a href="' + resnaisUrl + '">' +
+    frenchTitle + ' (1968) directed by Alain Resnais</a></h3></article>';
+  const resnaisPage = movieHtml
+    .replace(/<div id="rso"[\s\S]*?<\/main>/, '<div id="rso">' + resnaisResult + '</div></main>')
+    .replace("Interstellar</h2>", localizedTitle + "</h2>")
+    .replace("2014 ‧ Sci-fi/Adventure ‧ 2h 49m", "1968 ‧ Ficção científica/Drama ‧ 1h 34m")
+    .replace("Christopher+Nolan", "Alain+Resnais")
+    .replace(">Christopher Nolan</a>", ">Alain Resnais</a>")
+    .replace('<a href="https://www.themoviedb.org/movie/157336-interstellar">TMDB</a>', "");
   const otherPages = {
     regular: regularHtml,
+    "localized-film": resnaisPage,
+    "localized-film-conflicting-director": resnaisPage.replace("directed by Alain Resnais", "directed by François Truffaut"),
+    "localized-film-wrong-year": resnaisPage.replace("(1968) directed by", "(1969) directed by"),
+    "localized-film-ambiguous": resnaisPage.replace(resnaisResult,
+      resnaisResult + resnaisResult.replace(resnaisUrl, "https://letterboxd.com/film/another-film/")),
     aviator: regularHtml.replace("Interstellar (2014) - IMDb", "The Aviator's Wife (1981)")
       .replace("tt0816692", "tt0080728")
       .replace('<div id="rso"', '<div role="region" aria-label="AI Overview">A 1981 film and a 2013 novel</div><div id="rso"'),
@@ -410,6 +427,20 @@ test("installs in Chrome and updates Google controls across settings and result 
   await google.navigate("https://www.google.com/search?q=Interstellar&fixture=film-without-sidebar");
   await until(async () => (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
   assert.equal((await links("panel"))[0], "https://letterboxd.com/imdb/tt0816692");
+
+  const frenchSearch = "https://www.google.com/search?q=" + encodeURIComponent("je t'aime je t'aime");
+  await google.navigate(frenchSearch + "&fixture=localized-film");
+  await until(async () => (await links("result"))[0] === resnaisUrl);
+  assert.deepEqual(await links("panel"), [resnaisUrl]);
+  assert.match(await google.value("document.querySelector('.tl-result-heading').textContent"), /Eu te Amo, Eu te Amo/);
+  const localizedFallback = "https://letterboxd.com/search/films/" + encodeURIComponent(localizedTitle + " 1968") + "/";
+  for (const variant of ["localized-film-conflicting-director", "localized-film-wrong-year", "localized-film-ambiguous"]) {
+    await google.navigate(frenchSearch + "&fixture=" + variant);
+    const url = JSON.stringify("fixture=" + variant);
+    await until(async () => await google.value("location.search.includes(" + url + ")") &&
+      (await links("result"))[0] === localizedFallback);
+    assert.deepEqual(await links("panel"), [localizedFallback]);
+  }
 
   const taxi = "https://letterboxd.com/imdb/tt0075314";
   for (const variant of ["split-without-sidebar", "semantic-film-header"]) {

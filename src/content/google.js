@@ -328,13 +328,17 @@ function pageFilm(movie, panel, results, query) {
   return letterboxdFilmResult(results, [query.movieTitle || query.title], query.year);
 }
 
-function letterboxdFilmResult(results, titles, year) {
+function letterboxdFilmResult(results, titles, year, director) {
   const names = titles.map(titleWithoutArticle).filter(Boolean);
+  const expectedDirector = normalizeTitle(director);
   const matches = new Map();
   for (const { heading, ids } of results) {
     if (!ids?.canonicalUrl) continue;
     const label = text(heading);
-    const titled = label.match(/^(.+?\(\d{4}\))\s*(?:directed by|dirigid[oa] por|[•|–—-])\s+.+$/iu)?.[1];
+    const credit = label.match(/^(.+?\(\d{4}\))\s*(?:directed by|dirigid[oa] por)\s+(.+?)(?:\s*[•|]|\s+[–—-]\s+|$)/iu);
+    const creditedDirector = normalizeTitle(credit?.[2]);
+    if (expectedDirector && creditedDirector && creditedDirector !== expectedDirector) continue;
+    const titled = credit?.[1] ?? label.match(/^(.+?\(\d{4}\))\s*[•|–—-]\s+.+$/u)?.[1];
     const candidate = parseSelection(titled ?? label.replace(/\s*[•|–—-]\s*Letterboxd\s*$/i, ""));
     if (candidate.year && (!year || candidate.year === year) && names.includes(titleWithoutArticle(candidate.title))) {
       matches.set(ids.canonicalUrl, { title: candidate.title, year: candidate.year, canonicalUrl: ids.canonicalUrl });
@@ -343,9 +347,16 @@ function letterboxdFilmResult(results, titles, year) {
   return matches.size === 1 ? matches.values().next().value : null;
 }
 
-function canonicalFilmUrl(film, results) {
-  return film.canonicalUrl || (film.year &&
-    letterboxdFilmResult(results, [film.title, film.originalTitle], film.year)?.canonicalUrl);
+function canonicalFilmUrl(film, results, query) {
+  if (film.canonicalUrl || !film.year) return film.canonicalUrl;
+  const titles = [film.title, film.originalTitle];
+  const known = letterboxdFilmResult(results, titles, film.year);
+  if (known || film.originalTitle || film.imdbId || film.tmdbId || film.conflictingIds ||
+      (query.year && query.year !== film.year)) {
+    return known?.canonicalUrl;
+  }
+  titles.push(query.movieTitle || query.title);
+  return letterboxdFilmResult(results, titles, film.year, film.director)?.canonicalUrl;
 }
 
 function posterShape(image) {
@@ -669,7 +680,7 @@ export function start() {
         const panel = filmPanel(movie, query, results);
         const film = pageFilm(movie, panel, results, query);
         if (film) {
-          const canonical = canonicalFilmUrl(film, results);
+          const canonical = canonicalFilmUrl(film, results, query);
           const fallback = searchUrl([film.title, film.year].filter(Boolean).join(" "));
           let direct = film.conflictingIds ? null : canonical || redirectUrl(film);
           let year = film.year;
@@ -737,7 +748,7 @@ export function start() {
       const movie = structuredMovie();
       const query = searchIdentity();
       const film = pageFilm(movie, filmPanel(movie, query, results), results, query);
-      reply(film && { ...film, canonicalUrl: canonicalFilmUrl(film, results) });
+      reply(film && { ...film, canonicalUrl: canonicalFilmUrl(film, results, query) });
     }
   });
   const observer = new MutationObserver(records => {
