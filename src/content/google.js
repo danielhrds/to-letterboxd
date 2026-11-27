@@ -3,24 +3,59 @@ import { messagesFor } from "../core/messages.js";
 import { filmLink, isGoogleSearch, redirectUrl, searchUrl } from "../core/urls.js";
 
 const OWN = "[data-to-letterboxd]";
-const PANEL = '.kp-wholepage, .knowledge-panel, [data-attrid="kc:/film/film:knowledge panel"], #rhs, #kp-wp-tab-overview';
+const FILM_PANEL = '.kp-wholepage, .knowledge-panel, [data-attrid="kc:/film/film:knowledge panel"]';
+const PANEL = `${FILM_PANEL}, #rhs, #kp-wp-tab-overview`;
 const MOVIE = '[itemscope][itemtype$="/Movie"]';
 const DIRECTOR = '[data-attrid="kc:/film/film:director"], [itemprop="director"]';
 const RELEASE = '[data-attrid="kc:/film/film:release date"], [itemprop="datePublished"]';
-const HEADING = '[data-attrid="title"], [itemprop="name"], h1, [role="heading"]';
+const FILM_TITLE = '[data-attrid="title"], [data-attrid="kc:/film/film:title"]';
+const FILM_DETAILS = '[data-attrid^="kc:/film/film:"]:not([data-attrid="kc:/film/film:title"])';
+const MAIN_HEADING = 'h1, [role="heading"][aria-level="1"]';
+const RESULT_HEADING = 'h3, [role="heading"][aria-level="3"]';
+const EXCLUDED = 'dialog, [role="dialog"], [hidden], [aria-hidden="true"], [aria-roledescription="carousel"]';
 
 const text = (node, limit) => cleanText(node?.textContent, limit);
 const own = node => node?.nodeType === 1 && node.closest(OWN);
 const attrText = node => node?.getAttribute("content") || node?.getAttribute("datetime") || text(node);
 
-function webResults() {
-  const root = document.querySelector('#rso, #search, main[role="main"], main');
+function resultsRoot() {
+  return document.getElementById("rso") ?? document.getElementById("search") ??
+    document.querySelector('main, [role="main"]');
+}
+
+function webResults(root) {
   if (!root) return [];
-  return [...root.querySelectorAll("a[href]")].flatMap(anchor => {
-    if (own(anchor) || anchor.closest(PANEL) || !anchor.querySelector("h3, [role=heading][aria-level='3']")) return [];
+  const seen = new Set();
+  return [...root.querySelectorAll(RESULT_HEADING)].flatMap(heading => {
+    const anchor = heading.closest("a[href]") ?? heading.querySelector("a[href]");
+    if (!anchor || seen.has(anchor) || own(anchor) || anchor.closest(`${PANEL}, ${EXCLUDED}`)) return [];
+    seen.add(anchor);
     const ids = filmLink(anchor.href, location.href);
-    return [{ anchor, ids }];
+    return [{ anchor, heading, ids }];
   });
+}
+
+function outsideInlineLayout(anchor, boundary) {
+  for (let parent = anchor.parentElement; parent && parent !== boundary; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (parent.matches("a, button") || style.display.startsWith("inline") ||
+        (style.display === "flex" && style.flexDirection.startsWith("row")) ||
+        style.transform !== "none" || style.rotate !== "none" || style.scale !== "none") {
+      anchor = parent;
+    }
+  }
+  return anchor;
+}
+
+function resultAnchor(anchor, heading, root) {
+  const group = anchor.closest(".g, [data-snhf], article");
+  if (group && group !== root && root.contains(group)) return outsideInlineLayout(group, root);
+  let block = anchor.contains(heading) ? anchor : heading;
+  while (block.parentElement && block.parentElement !== root &&
+      block.parentElement.querySelectorAll(RESULT_HEADING).length === 1) {
+    block = block.parentElement;
+  }
+  return outsideInlineLayout(block, root);
 }
 
 function typeIsMovie(node) {
@@ -68,11 +103,54 @@ function metadata(movie, preferredTitle) {
   };
 }
 
-function filmPanel(movie) {
-  for (const panel of document.querySelectorAll(`${PANEL}, ${MOVIE}`)) {
-    const heading = panel.querySelector(HEADING);
-    const headingData = parseSelection(text(heading, 180));
-    const title = headingData.title;
+function searchIdentity() {
+  const raw = new URL(location.href).searchParams.get("q") ?? "";
+  const tags = /\s+(?:film|movie|filme)$/i;
+  const parsed = parseSelection(raw);
+  const withoutTag = parseSelection(raw.replace(tags, ""));
+  return {
+    year: parsed.year || withoutTag.year,
+    titles: new Set([parsed.title, parsed.title?.replace(tags, ""), withoutTag.title]
+      .map(normalizeTitle).filter(Boolean))
+  };
+}
+
+function panelCandidates() {
+  const panels = new Set([
+    ...document.querySelectorAll(`${FILM_PANEL}, ${MOVIE}`),
+    ...document.querySelectorAll("#rhs, #kp-wp-tab-overview")
+  ]);
+  for (const heading of document.querySelectorAll(FILM_TITLE)) {
+    if (heading.closest(`${PANEL}, ${MOVIE}, #rso, ${EXCLUDED}`)) continue;
+    let ancestor = heading.parentElement;
+    for (let depth = 0; ancestor && depth < 4 && !ancestor.matches("body, main, #search"); depth++) {
+      if (ancestor.querySelector(FILM_DETAILS)) {
+        panels.add(ancestor);
+        break;
+      }
+      ancestor = ancestor.parentElement;
+    }
+  }
+  return panels;
+}
+
+function filmPanel(movie, query) {
+  const movieNames = [movie?.name, ...[movie?.alternateName].flat()].map(normalizeTitle).filter(Boolean);
+  for (const panel of panelCandidates()) {
+    const name = panel.matches(MOVIE) ? [...panel.querySelectorAll('[itemprop="name"]')]
+      .find(node => node.closest("[itemscope]") === panel && !node.closest(EXCLUDED)) : null;
+    const expectedTitles = new Set([...query.titles, ...movieNames, normalizeTitle(attrText(name))]);
+    const explicit = [...panel.querySelectorAll(FILM_TITLE)].filter(node => !node.closest(EXCLUDED));
+    const headings = explicit.length ? explicit : [...panel.querySelectorAll(MAIN_HEADING)]
+      .filter(node => !node.closest(EXCLUDED));
+    const matches = headings.filter(node => {
+      const title = normalizeTitle(parseSelection(text(node)).title);
+      return title && expectedTitles.has(title);
+    });
+    const heading = explicit.length === 1 ? explicit[0] : matches.length === 1 ? matches[0] : null;
+    const titleElement = heading ?? (name && !name.matches("meta") ? name : null);
+    const headingData = parseSelection(attrText(name || titleElement));
+    const title = cleanText(headingData.title, 180);
     if (!title || panel.querySelector('[data-attrid^="kc:/tv/"], [itemtype$="/TVSeries"]')) continue;
     const descriptor = text(panel.querySelector('[data-attrid="subtitle"], [data-attrid="type"]'), 150);
     if (/\b(tv series|television series|série de televisão|série de tv|temporadas?|seasons?)\b/i.test(descriptor)) continue;
@@ -80,14 +158,13 @@ function filmPanel(movie) {
       text(node.querySelector('[itemprop="name"], a') ?? node, 120).replace(/^(?:directors?|direç[ãa]o|diretores?)\s*:\s*/i, ""));
     const director = directors.length === 1 ? directors[0] : "";
     const year = yearIn(attrText(panel.querySelector(RELEASE))) || yearIn(descriptor) || headingData.year;
-    const linkedMovie = [movie?.name, ...[movie?.alternateName].flat()]
-      .some(name => name && normalizeTitle(name) === normalizeTitle(title));
-    const filmEvidence = panel.matches(MOVIE) || panel.querySelector('[data-attrid^="kc:/film/film:"]') ||
+    const linkedMovie = movieNames.includes(normalizeTitle(title));
+    const filmEvidence = panel.matches(MOVIE) || panel.querySelector(FILM_DETAILS) ||
       linkedMovie || (director && year && /\b\d+\s*(?:h\b|min\b|m\b)/i.test(descriptor));
     if (!filmEvidence) continue;
     const data = linkedMovie ? metadata(movie, title) : {};
     const sourceLinks = [...panel.querySelectorAll("a[href]")].filter(anchor =>
-      !own(anchor) && !anchor.closest('[aria-roledescription="carousel"]') &&
+      !own(anchor) && !anchor.closest(EXCLUDED) &&
       (anchor.matches('[itemprop="sameAs"]') || /^(IMDb|TMDB|Letterboxd)$/i.test(text(anchor))));
     const links = combineLinks([
       ...sourceLinks.map(anchor => anchor.href),
@@ -98,7 +175,7 @@ function filmPanel(movie) {
     const movieYear = data.year || year;
     const conflictingIds = links.conflictingIds || data.conflictingIds ||
       Boolean(year && data.year && Math.abs(year - data.year) > 1);
-    const anchor = heading.closest("a, button") ?? heading;
+    const anchor = titleElement && outsideInlineLayout(titleElement, panel);
     return {
       anchor,
       film: { ...data, ...links, title, year: movieYear, director: data.director || director, conflictingIds }
@@ -107,25 +184,46 @@ function filmPanel(movie) {
   return null;
 }
 
-function pageFilm(movie, panel) {
-  if (panel) return panel.film;
-  const query = parseSelection(new URL(location.href).searchParams.get("q"));
-  const tags = /\s+(?:film|movie|filme)$/i;
-  const requested = normalizeTitle(query.title?.replace(tags, ""));
+function resultIdentity(heading) {
+  const label = text(heading).replace(/\s*[•|–—-]\s*(?:IMDb|TMDB|The Movie Database(?: \(TMDB\))?)$/i, "");
+  return parseSelection(label);
+}
+
+function pageFilm(movie, panel, results, query) {
+  if (panel) {
+    const film = panel.film;
+    if (!film.year || film.conflictingIds || film.canonicalUrl || film.imdbId || film.tmdbId) return film;
+    const titles = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
+    const matches = new Set();
+    for (const { heading, ids } of results) {
+      if (ids?.source !== "imdb") continue;
+      const candidate = resultIdentity(heading);
+      if (candidate.year === film.year && titles.includes(normalizeTitle(candidate.title))) matches.add(ids.imdbId);
+    }
+    return matches.size === 1 ? { ...film, imdbId: matches.values().next().value } : film;
+  }
+  if (!query.titles.size) return null;
   const film = metadata(movie);
-  if (requested && [film.title, film.originalTitle].some(title => normalizeTitle(title) === requested) &&
+  if ([film.title, film.originalTitle].some(title => query.titles.has(normalizeTitle(title))) &&
       (!query.year || query.year === film.year)) return film;
-  return null;
+  const matches = new Map();
+  for (const { heading, ids } of results) {
+    if (ids?.source !== "tmdb") continue;
+    const candidate = resultIdentity(heading);
+    if (!query.titles.has(normalizeTitle(candidate.title)) || (query.year && query.year !== candidate.year)) continue;
+    matches.set(ids.tmdbId, { title: candidate.title, year: candidate.year, tmdbId: ids.tmdbId });
+  }
+  return matches.size === 1 ? matches.values().next().value : null;
 }
 
 function existingFilm(results, film) {
   const names = [film.title, film.originalTitle].map(normalizeTitle).filter(Boolean);
   const linkedById = results.some(({ ids }) => ids?.source === "letterboxd" &&
     ((ids.imdbId && ids.imdbId === film.imdbId) || (ids.tmdbId && ids.tmdbId === film.tmdbId)));
-  const similar = results.flatMap(({ anchor, ids }) => {
+  const similar = results.flatMap(({ heading, ids }) => {
     if (!ids?.canonicalUrl) return [];
     if (ids.canonicalUrl === film.canonicalUrl) return [{ url: ids.canonicalUrl, year: film.year }];
-    const label = text(anchor.querySelector("h3, [role=heading]"));
+    const label = text(heading);
     const titled = label.match(/^(.+?\(\d{4}\))\s*(?:directed by|dirigid[oa] por|[•|–—-])\s+.+$/iu)?.[1];
     const candidate = parseSelection(titled ?? label.replace(/\s*[•|–—-]\s*Letterboxd\s*$/i, ""));
     if (names.includes(normalizeTitle(candidate.title)) &&
@@ -161,74 +259,69 @@ function link(url, label, newTab, withIcon = true) {
 export function start() {
   let settings;
   let messages;
-  let port;
   let timer;
-  let reconnectTimer;
   let pending;
-  let sequence = 0;
+  let settingsRequest = 0;
+  let invalidateResults = false;
+  let suspended = false;
   let page = location.href;
   let theme;
   const widgets = new Map();
 
-  function send(message) {
-    try {
-      port?.postMessage(message);
-    } catch {}
-  }
-
   function cancelResolution() {
-    if (pending && !pending.done) send({ type: "cancel" });
+    const port = pending?.port;
     pending = null;
+    port?.disconnect();
   }
 
   function schedule() {
-    if (timer) return;
+    if (timer || suspended) return;
     timer = setTimeout(() => {
       timer = null;
       render();
     }, 70);
   }
 
-  function connect() {
-    if (port || !isGoogleSearch(location.href) || document.hidden) return;
+  async function refreshSettings(invalidate = false) {
+    if (suspended || !isGoogleSearch(location.href)) return;
+    invalidateResults ||= invalidate;
+    const request = ++settingsRequest;
     try {
-      port = chrome.runtime.connect({ name: "google" });
+      const next = await chrome.runtime.sendMessage({ type: "googleSettings" });
+      if (!next || request !== settingsRequest) return;
+      const localized = messages && settings?.language === next.language
+        ? messages : await messagesFor(next.language);
+      if (request !== settingsRequest) return;
+      if (invalidateResults || settings?.tmdbEnabled !== next.tmdbEnabled) cancelResolution();
+      invalidateResults = false;
+      settings = next;
+      messages = localized;
+      schedule();
+    } catch {}
+  }
+
+  function requestFilm(key, film) {
+    const request = { key };
+    pending = request;
+    try {
+      const port = chrome.runtime.connect({ name: "googleResolution" });
+      request.port = port;
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        request.port = null;
+      });
+      port.onMessage.addListener(message => {
+        if (pending !== request || message.type !== "result") return;
+        request.result = message.result;
+        request.port = null;
+        port.disconnect();
+        schedule();
+      });
+      port.postMessage({ type: "resolve", film });
     } catch {
-      return;
+      request.port?.disconnect();
+      request.port = null;
     }
-    port.onDisconnect.addListener(() => {
-      void chrome.runtime.lastError;
-      port = null;
-      if (pending && !pending.done) cancelResolution();
-      clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(connect, 500);
-    });
-    port.onMessage.addListener(message => {
-      if (message.type === "settings") {
-        if (message.invalidate || !settings || settings.tmdbEnabled !== message.settings.tmdbEnabled) {
-          cancelResolution();
-        }
-        const language = message.settings.language;
-        if (!messages || settings?.language !== language) {
-          void messagesFor(language).then(localized => {
-            if (settings?.language !== language) return;
-            messages = localized;
-            schedule();
-          });
-        }
-        settings = message.settings;
-        schedule();
-      }
-      if (message.type === "invalidate") {
-        cancelResolution();
-        schedule();
-      }
-      if (message.type === "result" && pending?.id === message.id) {
-        pending.done = true;
-        pending.result = message.result;
-        schedule();
-      }
-    });
   }
 
   function setWidget(keep, key, anchor, type, details, build) {
@@ -236,14 +329,15 @@ export function start() {
     keep.add(key);
     const signature = JSON.stringify([type, details, settings.newTab, theme, messages.language]);
     const old = widgets.get(key);
-    if (old?.anchor === anchor && old.node.isConnected && old.signature === signature) return;
+    const parent = type === "result" ? anchor : anchor.parentElement;
+    if (old?.anchor === anchor && old.node.parentElement === parent && old.signature === signature) return;
     old?.node.remove();
-    const node = document.createElement(type === "imdb" ? "span" : "div");
+    const node = document.createElement("div");
     node.dataset.toLetterboxd = type;
     node.dataset.theme = theme;
     node.lang = messages.language;
     build(node);
-    if (type === "result") anchor.before(node);
+    if (type === "result") anchor.prepend(node);
     else anchor.after(node);
     widgets.set(key, { node, signature, anchor });
   }
@@ -265,19 +359,27 @@ export function start() {
             ? "light" : "dark";
         }
       }
-      const results = webResults();
+      const root = resultsRoot();
+      const results = webResults(root);
       if (settings.googleImdb) {
-        for (const { anchor, ids } of results) {
+        const placements = new Map();
+        for (const { anchor, heading, ids } of results) {
           if (ids?.source !== "imdb") continue;
           const url = redirectUrl({ imdbId: ids.imdbId });
-          setWidget(keep, anchor, anchor, "imdb", url, node =>
+          const placement = resultAnchor(anchor, heading, root);
+          const shown = placements.get(placement) ?? new Set();
+          if (shown.has(url)) continue;
+          shown.add(url);
+          placements.set(placement, shown);
+          setWidget(keep, anchor, placement, "imdb", url, node =>
             node.append(link(url, msg("viewOnLetterboxd"), settings.newTab)));
         }
       }
       if (settings.googlePanel || settings.googleResult) {
         const movie = structuredMovie();
-        const panel = filmPanel(movie);
-        const film = pageFilm(movie, panel);
+        const query = searchIdentity();
+        const panel = filmPanel(movie, query);
+        const film = pageFilm(movie, panel, results, query);
         if (film) {
           const existing = existingFilm(results, film);
           const canonical = film.canonicalUrl || existing.canonicalUrl;
@@ -285,13 +387,12 @@ export function start() {
           let direct = film.conflictingIds ? null : canonical || redirectUrl(film);
           let year = film.year;
           if (!direct && !film.conflictingIds && settings.tmdbEnabled &&
-              ((panel && settings.googlePanel) || (!existing.duplicate && settings.googleResult))) {
+              ((panel?.anchor && settings.googlePanel) || (root && results.length && !existing.duplicate && settings.googleResult))) {
             const input = { ...film, locale: document.documentElement.lang || chrome.i18n.getUILanguage() };
             const key = JSON.stringify(input);
-            if (port && pending?.key !== key) {
+            if (pending?.key !== key) {
               cancelResolution();
-              pending = { key, id: ++sequence };
-              send({ type: "resolve", id: pending.id, film: input });
+              if (!document.hidden) requestFilm(key, input);
             }
             const resolved = pending?.result;
             if (resolved?.status === "confirmedIdentity") {
@@ -301,18 +402,17 @@ export function start() {
           } else {
             cancelResolution();
           }
-          if (panel && settings.googlePanel) {
+          if (panel?.anchor && settings.googlePanel) {
             setWidget(keep, "panel", panel.anchor, "panel", [direct, fallback], node => {
               node.append(link(direct || fallback, msg(direct ? "menuOpen" : "searchOnLetterboxd"), settings.newTab));
               if (direct && !canonical) node.append(link(fallback, msg("searchInstead"), settings.newTab, false));
             });
           }
-          const firstResult = results[0]?.anchor.closest(".g, [data-snhf], [data-hveid]") ?? results[0]?.anchor;
-          if (settings.googleResult && firstResult && !existing.duplicate) {
+          if (settings.googleResult && root && results.length && !existing.duplicate) {
             const directResult = direct && year;
             const displayTitle = [film.title, year ? `(${year})` : null].filter(Boolean).join(" ");
             const label = msg(directResult ? "resultTitle" : "resultSearchTitle", displayTitle);
-            setWidget(keep, "result", firstResult, "result", [directResult ? direct : fallback, label], node => {
+            setWidget(keep, "result", root, "result", [directResult ? direct : fallback, label], node => {
               const heading = document.createElement("div");
               heading.append(link(directResult ? direct : fallback, label, settings.newTab));
               const description = document.createElement("p");
@@ -339,10 +439,14 @@ export function start() {
   }
 
   if (!isGoogleSearch(location.href)) return;
+  chrome.runtime.onMessage.addListener((message, sender) => {
+    if (sender.id === chrome.runtime.id && message?.type === "refreshGoogleSettings") {
+      void refreshSettings(message.invalidate === true);
+    }
+  });
   const observer = new MutationObserver(records => {
     if (records.some(record => !own(record.target) && (record.type !== "childList" ||
         [...record.addedNodes, ...record.removedNodes].some(node => !own(node))))) {
-      connect();
       schedule();
     }
   });
@@ -350,8 +454,20 @@ export function start() {
     subtree: true, childList: true, characterData: true, attributes: true,
     attributeFilter: ["href", "data-attrid", "content", "datetime"]
   });
-  document.addEventListener("visibilitychange", connect);
+  document.addEventListener("visibilitychange", schedule);
   window.addEventListener("popstate", schedule);
   window.navigation?.addEventListener("currententrychange", schedule);
-  connect();
+  window.addEventListener("pagehide", () => {
+    suspended = true;
+    settingsRequest++;
+    clearTimeout(timer);
+    timer = null;
+    cancelResolution();
+  });
+  window.addEventListener("pageshow", event => {
+    if (!event.persisted) return;
+    suspended = false;
+    void refreshSettings();
+  });
+  void refreshSettings();
 }

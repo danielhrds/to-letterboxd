@@ -69,7 +69,8 @@ globalThis.chrome = {
   },
   tabs: {
     async create(properties) { tabs.push({ ...properties, operation: "create" }); },
-    async update(tabId, properties) { tabs.push({ ...properties, tabId, operation: "update" }); }
+    async update(tabId, properties) { tabs.push({ ...properties, tabId, operation: "update" }); },
+    async query() { return []; }
   },
   i18n: { getMessage: key => key === "localeTag" ? "en" : "Open on Letterboxd", getUILanguage: () => "en-US" },
   permissions: {
@@ -160,17 +161,37 @@ test("opens one destination and respects search mode, provider disable and the c
 
 test("rejects foreign senders and exposes only settings to Google", async () => {
   await setup({}, true);
-  const external = connect("google", "https://outside.test/search?q=Interstellar");
+  const external = connect("googleResolution", "https://outside.test/search?q=Interstellar");
   assert.equal(external.disconnected, true);
-  const google = connect("google", "https://www.google.com/search?q=Interstellar");
-  await setImmediate();
-  assert.equal(google.messages[0].type, "settings");
-  assert.equal(JSON.stringify(google.messages).includes(placeholder), false);
+  const google = { id: chrome.runtime.id, frameId: 0, url: "https://www.google.com/search?q=Interstellar" };
+  const settings = await new Promise(resolve => {
+    assert.deepEqual(chrome.runtime.onMessage.emit({ type: "googleSettings" }, google, resolve), [true]);
+  });
+  assert.deepEqual(settings, { ...DEFAULTS, tmdbEnabled: true });
   const callback = () => assert.fail("A content script cannot read the token state");
   assert.deepEqual(chrome.runtime.onMessage.emit(
-    { type: "tmdbState" }, google.sender, callback
+    { type: "tmdbState" }, google, callback
   ), [undefined]);
+  assert.deepEqual(chrome.runtime.onMessage.emit(
+    { type: "googleSettings" }, { ...google, url: "https://outside.test/search" }, callback
+  ), [undefined]);
+});
+
+test("cancels a Google lookup on disconnect", async context => {
+  await setup({}, true);
+  let signal;
+  context.mock.method(globalThis, "fetch", async (_url, options) => {
+    signal = options.signal;
+    return new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+  });
+  const google = connect("googleResolution", "https://www.google.com/search?q=Oldboy");
+  google.onMessage.emit({ type: "resolve", film: { title: "Oldboy" } });
+  await setImmediate();
+  assert.equal(signal.aborted, false);
   google.disconnect();
+  await setImmediate();
+  assert.equal(signal.aborted, true);
+  assert.deepEqual(google.messages, []);
 });
 
 test("resolves a title in one waiting tab and reuses the cached identity", async context => {

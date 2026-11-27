@@ -117,11 +117,25 @@ test("installs in Chrome and updates Google controls across settings and result 
     '<aside id="rhs">',
     '<div id="secondary"></div><aside id="rhs">'
   );
+  const otherPages = {
+    regular: regularHtml,
+    "cast-only": movieHtml.replace('<h2 data-attrid="title">Interstellar</h2>', "")
+      .replace('id="cast-heading" role="heading" aria-level="2"', 'id="cast-heading" role="heading" aria-level="1"'),
+    "panel-imdb": movieHtml.replace('<a href="https://www.themoviedb.org/movie/157336-interstellar">TMDB</a>', ""),
+    "film-header": movieHtml.replace('<aside id="rhs">', "<aside>").replace('class="kp-wholepage"', 'id="film-details"'),
+    "tmdb-result": regularHtml.replace(/(<\/div>\s*<\/main>)/, `
+      <article><h3><a href="https://www.themoviedb.org/movie/157336-interstellar">Interstellar (2014) — TMDB</a></h3></article>
+      $1`)
+  };
   const errors = [];
   onEvent(event => {
-    if (event.method === "Runtime.exceptionThrown") errors.push(event.params.exceptionDetails.text);
+    if (event.method === "Runtime.exceptionThrown") {
+      const { exception, text } = event.params.exceptionDetails;
+      errors.push(exception?.description ?? text);
+    }
     if (event.method !== "Fetch.requestPaused") return;
-    const body = Buffer.from(event.params.request.url.includes("q=regular") ? regularHtml : movieHtml).toString("base64");
+    const variant = new URL(event.params.request.url).searchParams.get("fixture");
+    const body = Buffer.from(otherPages[variant] ?? movieHtml).toString("base64");
     void send("Fetch.fulfillRequest", {
       requestId: event.params.requestId,
       responseCode: 200,
@@ -130,6 +144,7 @@ test("installs in Chrome and updates Google controls across settings and result 
     }, event.sessionId).catch(error => errors.push(error.message));
   });
   await send("Runtime.enable", {}, google.sessionId);
+  await send("Page.enable", {}, google.sessionId);
   await send("Runtime.enable", {}, popup.sessionId);
   await send("Emulation.setDeviceMetricsOverride", {
     width: 420, height: 600, deviceScaleFactor: 1, mobile: false
@@ -173,6 +188,29 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.deepEqual(await links("result"), ["https://letterboxd.com/tmdb/157336"]);
   assert.deepEqual(await links("panel"), ["https://letterboxd.com/tmdb/157336", "https://letterboxd.com/search/films/Interstellar%202014/"]);
   assert.equal(await google.value("document.querySelectorAll('#rso h3').length"), 4);
+  const placement = await google.value(`(() => {
+    const results = document.querySelector('#rso');
+    const card = document.querySelector('[data-to-letterboxd=result]');
+    const header = document.querySelector('#film-heading');
+    const panel = document.querySelector('[data-to-letterboxd=panel]');
+    return {
+      shortcutAfterResult: document.querySelector('#first-imdb').nextElementSibling?.dataset.toLetterboxd,
+      shortcutInTransformedWrapper: Boolean(document.querySelector('#flipped-imdb [data-to-letterboxd]')),
+      cardAtHead: results.firstElementChild === card,
+      cardWidth: card.getBoundingClientRect().width,
+      resultsWidth: results.getBoundingClientRect().width,
+      panelAfterTitle: header.nextElementSibling === panel,
+      panelGap: panel.getBoundingClientRect().top - header.getBoundingClientRect().bottom,
+      panelAlignment: getComputedStyle(panel).justifyContent
+    };
+  })()`);
+  assert.equal(placement.shortcutAfterResult, "imdb");
+  assert.equal(placement.shortcutInTransformedWrapper, false);
+  assert.equal(placement.cardAtHead, true);
+  assert.equal(placement.cardWidth, placement.resultsWidth);
+  assert.equal(placement.panelAfterTitle, true);
+  assert.ok(placement.panelGap >= 12);
+  assert.equal(placement.panelAlignment, "center");
   const selectLanguage = language => popup.value(`(() => {
     const select = document.querySelector('select[name=language]');
     select.value = ${JSON.stringify(language)};
@@ -235,9 +273,39 @@ test("installs in Chrome and updates Google controls across settings and result 
   await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await popup.value("document.querySelector('input[name=googleImdb]').click()");
   await until(async () => (await links("imdb")).length === 2);
-  await google.navigate("https://www.google.com/search?q=regular");
+  const { currentIndex, entries } = await send("Page.getNavigationHistory", {}, google.sessionId);
+  const originalPage = entries[currentIndex].id;
+  await google.value(`
+    window.restoredFromCache = false;
+    window.addEventListener('pageshow', event => { window.restoredFromCache = event.persisted; });
+  `);
+  await google.navigate("https://www.google.com/search?q=regular&fixture=regular");
   await until(async () => (await links("imdb")).length === 2 && (await links("panel")).length === 0);
   assert.equal((await links("result")).length, 0);
+
+  await popup.value("document.querySelector('input[name=googleImdb]').click()");
+  await until(async () => (await links("imdb")).length === 0);
+  await send("Page.navigateToHistoryEntry", { entryId: originalPage }, google.sessionId);
+  await until(() => google.value("window.restoredFromCache === true"));
+  await until(async () => (await links("imdb")).length === 0);
+  assert.equal((await links("panel")).length, 1);
+  await popup.value("document.querySelector('input[name=googleImdb]').click()");
+  await until(async () => (await links("imdb")).length === 2);
+
+  await google.navigate("https://www.google.com/search?q=Interstellar&fixture=cast-only");
+  await until(async () => await google.value("location.search.includes('fixture=cast-only')") &&
+    (await links("imdb")).length === 2);
+  assert.deepEqual(await links("panel"), []);
+  assert.deepEqual(await links("result"), []);
+  await google.navigate("https://www.google.com/search?q=Interstellar&fixture=panel-imdb");
+  await until(async () => (await links("result"))[0] === "https://letterboxd.com/imdb/tt0816692");
+  assert.equal((await links("panel"))[0], "https://letterboxd.com/imdb/tt0816692");
+  await google.navigate("https://www.google.com/search?q=Interstellar&fixture=film-header");
+  await until(async () => (await links("panel"))[0] === "https://letterboxd.com/tmdb/157336");
+  assert.equal((await links("result"))[0], "https://letterboxd.com/tmdb/157336");
+  await google.navigate("https://www.google.com/search?q=Interstellar+%282014%29+film&fixture=tmdb-result");
+  await until(async () => (await links("result"))[0] === "https://letterboxd.com/tmdb/157336");
+  assert.deepEqual(await links("panel"), []);
   await until(menuExists);
   assert.deepEqual(errors, []);
 });

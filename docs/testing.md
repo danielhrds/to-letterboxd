@@ -9,7 +9,7 @@ $env:TO_LETTERBOXD_CHROME = 'C:\Program Files\Google\Chrome\Application\chrome.e
 npm test
 ```
 
-O teste abre a extensão no Chrome, verifica as preferências e o registro do menu e carrega uma página simulada com a URL de pesquisa do Google. A fixture cobre links IMDb, painel, resultado dedicado, deduplicação e alterações de estado sem recarregar a extensão. Para verificar outra pasta instalável, defina também `TO_LETTERBOXD_EXTENSION_PATH`.
+O teste abre a extensão no Chrome e carrega páginas simuladas com a URL da Pesquisa Google. Verifica atalhos fora de contêineres invertidos, card na coluna de resultados, botão abaixo do título, deduplicação e atualização de preferências ao voltar pelo histórico. Para verificar outra pasta instalável, defina também `TO_LETTERBOXD_EXTENSION_PATH`.
 
 ## Verificação externa
 

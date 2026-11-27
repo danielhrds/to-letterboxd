@@ -39,7 +39,7 @@ export function filmLink(value, base) {
   }
   if (tmdbHosts.has(hostname)) {
     const id = tmdbId(pathname.match(/^\/movie\/(\d+)(?:-[^/]+)?\/?$/)?.[1]);
-    return id ? { tmdbId: id } : null;
+    return id ? { tmdbId: id, source: "tmdb" } : null;
   }
   if (letterboxdHosts.has(hostname)) {
     const slug = pathname.match(/^\/film\/([a-z0-9][a-z0-9-]*)\/?$/)?.[1];

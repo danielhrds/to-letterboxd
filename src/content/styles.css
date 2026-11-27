@@ -5,6 +5,10 @@
   --tl-link: light-dark(#075a80, #40bcf4);
   --tl-focus: light-dark(#a74700, #ff8000);
   color-scheme: light dark;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  grid-column: 1 / -1;
+  writing-mode: horizontal-tb;
   font-family: inherit;
   line-height: 1.45;
 }
@@ -31,16 +35,17 @@
 
 [data-to-letterboxd="imdb"] {
   display: block;
-  margin-block: 5px;
+  margin-block: 4px 14px;
   font-size: 0.875rem;
 }
 
 [data-to-letterboxd="panel"] {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: 8px 14px;
-  margin-block: 8px;
+  margin-block: 12px 16px;
   font-size: 0.875rem;
 }
 
@@ -52,6 +57,7 @@
 }
 
 [data-to-letterboxd="result"] {
+  inline-size: 100%;
   margin-block: 6px 18px;
   padding: 10px 12px;
   border: 1px solid var(--tl-border);

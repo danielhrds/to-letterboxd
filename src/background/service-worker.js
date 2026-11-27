@@ -74,6 +74,16 @@ function safePost(port, message) {
   } catch {}
 }
 
+function notifyGoogleTabs(invalidate) {
+  void chrome.tabs.query({}).then(tabs => {
+    for (const { id } of tabs) {
+      if (!Number.isInteger(id)) continue;
+      void chrome.tabs.sendMessage(id, { type: "refreshGoogleSettings", invalidate }, { frameId: 0 })
+        .catch(() => {});
+    }
+  }).catch(() => {});
+}
+
 function abortJobs() {
   for (const job of inFlight.values()) job.controller.abort();
   inFlight.clear();
@@ -139,37 +149,33 @@ function googleInput(message) {
 }
 
 function connectGoogle(port) {
-  const state = {};
-  googlePorts.set(port, state);
+  const controller = new AbortController();
+  let started = false;
+  googlePorts.set(port, controller);
   port.onDisconnect.addListener(() => {
-    state.current?.abort();
+    void chrome.runtime.lastError;
+    controller.abort();
     googlePorts.delete(port);
   });
   port.onMessage.addListener(message => {
-    if (message?.type === "cancel") {
-      state.current?.abort();
-      return;
-    }
-    if (message?.type !== "resolve" || !Number.isSafeInteger(message.id) || message.id < 1) return;
+    if (message?.type !== "resolve" || started || controller.signal.aborted) return;
     const input = googleInput(message.film);
     if (!input || knownDestination(input)) return;
-    state.current?.abort();
-    const controller = new AbortController();
-    state.current = controller;
+    started = true;
     void (async () => {
       const config = await configuration();
       if (controller.signal.aborted) return;
       const { settings } = config;
-      if (!settings.googlePanel && !settings.googleResult) return;
-      const result = await resolveShared(input, config, controller.signal);
-      if (!controller.signal.aborted) safePost(port, { type: "result", id: message.id, result });
+      const result = settings.googlePanel || settings.googleResult
+        ? await resolveShared(input, config, controller.signal)
+        : fallbackFor(input, "disabled");
+      if (!controller.signal.aborted) safePost(port, { type: "result", result });
     })().catch(() => {
       if (!controller.signal.aborted) safePost(port, {
-        type: "result", id: message.id, result: fallbackFor(input, "unavailable")
+        type: "result", result: fallbackFor(input, "unavailable")
       });
     });
   });
-  void configuration().then(({ settings }) => safePost(port, { type: "settings", settings })).catch(() => {});
 }
 
 function connectMenu(port) {
@@ -177,6 +183,7 @@ function connectMenu(port) {
   let started = false;
   menuPorts.set(port, controller);
   port.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
     controller.abort();
     menuPorts.delete(port);
   });
@@ -245,13 +252,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.runtime.onConnect.addListener(port => {
   const { sender } = port;
   if (sender?.id !== chrome.runtime.id || sender.frameId !== 0) return port.disconnect();
-  if (port.name === "google" && isGoogleSearch(sender.url)) return connectGoogle(port);
+  if (port.name === "googleResolution" && isGoogleSearch(sender.url)) return connectGoogle(port);
   if (port.name === "selection" && sender.url?.split("#")[0] === waiting) return connectMenu(port);
   port.disconnect();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || sender.url !== popup ||
+  if (sender.id !== chrome.runtime.id) return;
+  if (message?.type === "googleSettings" && sender.frameId === 0 && isGoogleSearch(sender.url)) {
+    void configuration().then(({ settings }) => reply(settings), () => reply(null));
+    return true;
+  }
+  if (sender.url !== popup ||
       !["tmdbState", "saveToken", "testToken", "removeToken", "clearCache"].includes(message?.type)) return;
   if (["saveToken", "removeToken"].includes(message.type)) tokenRevision++;
   void popupAction(message, tokenRevision).then(reply, () => reply({ state: "unavailable" }));
@@ -280,14 +292,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
   }
   if (invalidate) {
-    for (const state of googlePorts.values()) state.current?.abort();
+    for (const [port, controller] of googlePorts) {
+      controller.abort();
+      port.disconnect();
+    }
+    googlePorts.clear();
     abortJobs();
   }
-  if (changes[SETTINGS_KEY]) {
-    for (const port of googlePorts.keys()) safePost(port, { type: "settings", settings: after, invalidate });
-  } else if (invalidate) {
-    for (const port of googlePorts.keys()) safePost(port, { type: "invalidate" });
-  }
+  if (changes[SETTINGS_KEY] || invalidate) notifyGoogleTabs(invalidate);
 });
 
 chrome.permissions.onRemoved.addListener(permissions => {
