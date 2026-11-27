@@ -182,9 +182,9 @@ test("uses fallback for invalid credentials, malformed responses, network failur
 });
 
 test("normalizes settings without enabling undeclared options", () => {
-  assert.deepEqual(readSettings({ tmdbEnabled: 1, theme: "pink", ratings: true }), DEFAULTS);
-  assert.deepEqual(readSettings({ enabled: false, menuMode: "search", googleImdb: false }), {
-    ...DEFAULTS, menuMode: "search", googleImdb: false
+  assert.deepEqual(readSettings({ tmdbEnabled: 1, theme: "pink", language: "es", ratings: true }), DEFAULTS);
+  assert.deepEqual(readSettings({ enabled: false, menuMode: "search", googleImdb: false, language: "pt-BR" }), {
+    ...DEFAULTS, menuMode: "search", googleImdb: false, language: "pt-BR"
   });
 });
 

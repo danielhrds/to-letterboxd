@@ -1,4 +1,7 @@
 {
+  "localeTag": {
+    "message": "pt-BR"
+  },
   "appName": {
     "message": "To Letterboxd"
   },
@@ -89,6 +92,12 @@
   },
   "themeDark": {
     "message": "Escuro"
+  },
+  "language": {
+    "message": "Idioma"
+  },
+  "languageAuto": {
+    "message": "Mesmo do Chrome"
   },
   "advanced": {
     "message": "TMDB e cache"

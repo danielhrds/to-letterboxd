@@ -1,5 +1,6 @@
 import { cacheKey, cacheRevision, clearMatches, readMatch, saveMatch } from "./cache.js";
 import { cleanText, filmYear, parseSelection } from "../core/film-input.js";
+import { messagesFor } from "../core/messages.js";
 import { fallbackFor, knownDestination, resolveFilm } from "../core/resolver.js";
 import { readSettings, SETTINGS_KEY, TMDB_PERMISSION, TOKEN_KEY } from "../core/settings.js";
 import { validToken, validateToken } from "../core/tmdb.js";
@@ -30,8 +31,9 @@ function updateMenu() {
       resolve();
     }));
     if (settings.contextMenu) {
+      const messages = await messagesFor(settings.language);
       await new Promise(resolve => chrome.contextMenus.create({
-        id: MENU_ID, title: chrome.i18n.getMessage("menuOpen"), contexts: ["selection"]
+        id: MENU_ID, title: messages.get("menuOpen"), contexts: ["selection"]
       }, () => {
         void chrome.runtime.lastError;
         resolve();
@@ -260,7 +262,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || (!changes[SETTINGS_KEY] && !changes[TOKEN_KEY])) return;
   const before = readSettings(changes[SETTINGS_KEY]?.oldValue);
   const after = readSettings(changes[SETTINGS_KEY]?.newValue);
-  if (changes[SETTINGS_KEY] && before.contextMenu !== after.contextMenu) {
+  if (changes[SETTINGS_KEY] && (before.contextMenu !== after.contextMenu ||
+      (after.contextMenu && before.language !== after.language))) {
     updateMenu();
   }
   if (changes[TOKEN_KEY]) void clearMatches().catch(() => {});

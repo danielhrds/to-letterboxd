@@ -1,7 +1,9 @@
 [data-to-letterboxd] {
-  --tl-surface: light-dark(#f4f7f6, #263431);
-  --tl-text: light-dark(#14634d, #a0e3ca);
-  --tl-border: light-dark(#c4d9d1, #506e62);
+  --tl-surface: light-dark(#f4f6f8, #2c3440);
+  --tl-text: light-dark(#243140, #eef2f6);
+  --tl-border: light-dark(#b8c5d1, #445566);
+  --tl-link: light-dark(#075a80, #40bcf4);
+  --tl-focus: light-dark(#a74700, #ff8000);
   color-scheme: light dark;
   font-family: inherit;
   line-height: 1.45;
@@ -14,14 +16,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--tl-text);
+  color: var(--tl-link);
   text-decoration: underline;
   text-underline-offset: 2px;
   overflow-wrap: anywhere;
 }
 
 [data-to-letterboxd] a:focus-visible {
-  outline: 2px solid var(--tl-text);
+  outline: 2px solid var(--tl-focus);
   outline-offset: 3px;
 }
 

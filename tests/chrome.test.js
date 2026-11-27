@@ -144,6 +144,7 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal(await popup.value("document.querySelector('#token').type"), "password");
   assert.equal(await popup.value("document.querySelector('#get-token').pathname"), "/settings/api");
   assert.equal(await popup.value("document.querySelector('[name=persistentCache]').checked"), false);
+  assert.equal(await popup.value("document.querySelector('[name=language]').value"), "auto");
   await popup.value("document.querySelector('#advanced').open = true");
   const popupLayout = await popup.value(`({
     overflow: document.documentElement.scrollWidth > innerWidth,
@@ -172,6 +173,29 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.deepEqual(await links("result"), ["https://letterboxd.com/tmdb/157336"]);
   assert.deepEqual(await links("panel"), ["https://letterboxd.com/tmdb/157336", "https://letterboxd.com/search/films/Interstellar%202014/"]);
   assert.equal(await google.value("document.querySelectorAll('#rso h3').length"), 4);
+  const selectLanguage = language => popup.value(`(() => {
+    const select = document.querySelector('select[name=language]');
+    select.value = ${JSON.stringify(language)};
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  })()`);
+  await selectLanguage("pt-BR");
+  await until(() => popup.value("document.documentElement.lang === 'pt-BR'"));
+  assert.equal(await popup.value("document.querySelector('#advanced summary').textContent"), "TMDB e cache");
+  assert.equal(await popup.value("document.querySelector('#tmdb-state').textContent"), "TMDB ainda não configurado.");
+  await until(() => google.value(
+    "document.querySelector('[data-to-letterboxd=imdb] a')?.textContent === 'Ver no Letterboxd'"));
+  assert.equal(await google.value("document.querySelector('[data-to-letterboxd=result] a').textContent"),
+    "Interstellar (2014) no Letterboxd");
+  await popup.navigate(`${origin}/src/popup/privacy.html`);
+  await until(() => popup.value("document.title === 'Privacidade' && document.documentElement.lang === 'pt-BR'"));
+  await popup.navigate(`${origin}/src/resolving/resolving.html`);
+  await until(() => popup.value("document.querySelector('#status')?.textContent === 'Busca de filme cancelada'"));
+  await popup.navigate(`${origin}/src/popup/popup.html`);
+  await until(() => popup.value("document.documentElement.lang === 'pt-BR'"));
+  assert.equal(await popup.value("document.querySelector('select[name=language]').value"), "pt-BR");
+  await selectLanguage("en");
+  await until(() => google.value(
+    "document.querySelector('[data-to-letterboxd=imdb] a')?.textContent === 'View on Letterboxd'"));
 
   await google.value(`
     const item = document.createElement('div');
@@ -198,6 +222,9 @@ test("installs in Chrome and updates Google controls across settings and result 
     theme.dispatchEvent(new Event('change', { bubbles: true }));
   `);
   await until(() => google.value("document.querySelector('[data-to-letterboxd=panel]')?.dataset.theme === 'dark'"));
+  assert.equal(await popup.value("getComputedStyle(document.documentElement).backgroundColor"), "rgb(20, 24, 28)");
+  assert.equal(await google.value(
+    "getComputedStyle(document.querySelector('[data-to-letterboxd=panel] a')).color"), "rgb(64, 188, 244)");
   await popup.value("document.querySelector('input[name=contextMenu]').click()");
   await until(async () => !await menuExists());
   assert.equal((await links("panel")).length, 1);

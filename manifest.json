@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "To Letterboxd",
   "description": "__MSG_extensionDescription__",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "minimum_chrome_version": "123",
   "default_locale": "en",
   "permissions": ["storage", "contextMenus"],
@@ -37,6 +37,9 @@
         "src/content/google.js",
         "src/core/urls.js",
         "src/core/film-input.js",
+        "src/core/messages.js",
+        "_locales/en/messages.json",
+        "_locales/pt_BR/messages.json",
         "assets/icons/16.png"
       ],
       "matches": ["https://www.google.com/*", "https://www.google.com.br/*"]

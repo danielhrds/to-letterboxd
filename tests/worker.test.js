@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { setImmediate } from "node:timers/promises";
 import test from "node:test";
 import { DEFAULTS } from "../src/core/settings.js";
@@ -70,7 +71,7 @@ globalThis.chrome = {
     async create(properties) { tabs.push({ ...properties, operation: "create" }); },
     async update(tabId, properties) { tabs.push({ ...properties, tabId, operation: "update" }); }
   },
-  i18n: { getMessage: () => "Open on Letterboxd", getUILanguage: () => "pt-BR" },
+  i18n: { getMessage: key => key === "localeTag" ? "en" : "Open on Letterboxd", getUILanguage: () => "en-US" },
   permissions: {
     onRemoved: event(),
     contains: async () => providerAllowed,
@@ -128,6 +129,18 @@ test("registers and removes the selection menu independently of the old global s
   await setImmediate();
   assert.equal(menu.size, 0);
   assert.deepEqual(tabs, []);
+});
+
+test("updates the selection menu to the preferred language", async context => {
+  const catalog = await readFile(new URL("../_locales/pt_BR/messages.json", import.meta.url), "utf8");
+  context.mock.method(globalThis, "fetch", async url => {
+    assert.equal(url, `${extension}_locales/pt_BR/messages.json`);
+    return new Response(catalog);
+  });
+  await setup({ language: "pt-BR" });
+  assert.equal(menu.get("open-letterboxd").title, "Abrir no Letterboxd");
+  await setup({ language: "en" });
+  assert.equal(menu.get("open-letterboxd").title, "Open on Letterboxd");
 });
 
 test("opens one destination and respects search mode, provider disable and the current tab preference", async () => {

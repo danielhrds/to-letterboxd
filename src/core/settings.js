@@ -10,6 +10,7 @@ export const DEFAULTS = Object.freeze({
   menuMode: "smart",
   newTab: true,
   theme: "auto",
+  language: "auto",
   tmdbEnabled: false,
   persistentCache: false
 });
@@ -23,5 +24,6 @@ export function readSettings(value) {
   }
   if (["smart", "search"].includes(value?.menuMode)) settings.menuMode = value.menuMode;
   if (["auto", "light", "dark"].includes(value?.theme)) settings.theme = value.theme;
+  if (["auto", "en", "pt-BR"].includes(value?.language)) settings.language = value.language;
   return settings;
 }

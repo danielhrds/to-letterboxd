@@ -1,24 +1,34 @@
+import { browserMessages, messagesFor } from "../core/messages.js";
 import { readSettings, SETTINGS_KEY } from "../core/settings.js";
 import { filmLink, redirectUrl, searchUrl } from "../core/urls.js";
 import { localize } from "../ui/localize.js";
 
-localize();
 const status = document.getElementById("status");
 const link = document.getElementById("fallback");
 const params = new URLSearchParams(location.hash.slice(1));
 const text = params.get("text");
 const until = Math.min(Number(params.get("until")), Date.now() + 5000);
 const fallback = searchUrl(text);
+let messages = browserMessages();
+localize(messages);
 history.replaceState(null, "", location.pathname);
 
-void chrome.storage.local.get(SETTINGS_KEY).then(data => {
-  document.documentElement.dataset.theme = readSettings(data[SETTINGS_KEY]).theme;
+void chrome.storage.local.get(SETTINGS_KEY).then(async data => {
+  const settings = readSettings(data[SETTINGS_KEY]);
+  document.documentElement.dataset.theme = settings.theme;
+  messages = await messagesFor(settings.language);
+  localize(messages);
 }).catch(() => {});
 
 let port;
 let timer;
 let reconnect;
 let finished = false;
+
+function showCanceled() {
+  status.dataset.message = "resolutionCanceled";
+  status.textContent = messages.get("resolutionCanceled");
+}
 
 function stop() {
   finished = true;
@@ -46,7 +56,7 @@ function connect() {
       if (finished) return;
       if (message.type === "canceled") {
         stop();
-        status.textContent = chrome.i18n.getMessage("resolutionCanceled");
+        showCanceled();
       }
       if (message.type === "result") {
         const destination = filmLink(message.result?.url);
@@ -73,5 +83,5 @@ if (fallback && Number.isFinite(until)) {
   timer = setTimeout(() => go(fallback), Math.max(0, until - Date.now()));
   connect();
 } else {
-  status.textContent = chrome.i18n.getMessage("resolutionCanceled");
+  showCanceled();
 }

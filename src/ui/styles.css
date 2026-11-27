@@ -1,11 +1,14 @@
 :root {
   color-scheme: light dark;
-  --surface: light-dark(#fdfefc, #171e1c);
-  --text: light-dark(#182822, #e6eee9);
-  --muted: light-dark(#455b51, #b6c8bf);
-  --border: light-dark(#d4e0da, #465b52);
-  --accent: light-dark(#11674c, #83dfbd);
-  --control: light-dark(#fff, #242e29);
+  --surface: light-dark(#f4f6f8, #14181c);
+  --text: light-dark(#14181c, #eef2f6);
+  --muted: light-dark(#445566, #aabbcc);
+  --border: light-dark(#b8c5d1, #445566);
+  --accent: light-dark(#007434, #00e054);
+  --on-accent: light-dark(#fff, #14181c);
+  --link: light-dark(#075a80, #40bcf4);
+  --focus: light-dark(#a74700, #ff8000);
+  --control: light-dark(#fff, #2c3440);
   font: 100%/1.45 system-ui, sans-serif;
   background: var(--surface);
   color: var(--text);
@@ -20,10 +23,10 @@ body { margin: 0; padding: 1rem; }
 h1 { margin: 0; font-size: 1.25rem; }
 h2 { margin: 0 0 0.5rem; font-size: 1rem; }
 p { margin: 0.6rem 0; }
-a { color: var(--accent); text-underline-offset: 0.15em; }
+a { color: var(--link); text-underline-offset: 0.15em; }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 3px;
 }
 

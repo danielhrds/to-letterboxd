@@ -23,6 +23,7 @@ summary { cursor: pointer; font-weight: 600; }
 .token input { min-inline-size: 0; }
 .setting-help { margin: 0 0 0.65rem; font-size: 0.8rem; }
 .actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-block: 0.35rem; }
+#save-token:not(:disabled) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 footer { margin-block-start: 0.65rem; padding-block-start: 0.25rem; border-top: 1px solid var(--border); font-size: 0.8rem; }
 footer p { margin-block: 0.3rem; }

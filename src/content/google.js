@@ -1,4 +1,5 @@
 import { cleanText, filmYear, normalizeTitle, parseSelection, yearFromDate } from "../core/film-input.js";
+import { messagesFor } from "../core/messages.js";
 import { filmLink, isGoogleSearch, redirectUrl, searchUrl } from "../core/urls.js";
 
 const OWN = "[data-to-letterboxd]";
@@ -8,7 +9,6 @@ const DIRECTOR = '[data-attrid="kc:/film/film:director"], [itemprop="director"]'
 const RELEASE = '[data-attrid="kc:/film/film:release date"], [itemprop="datePublished"]';
 const HEADING = '[data-attrid="title"], [itemprop="name"], h1, [role="heading"]';
 
-const msg = (key, value) => chrome.i18n.getMessage(key, value);
 const text = (node, limit) => cleanText(node?.textContent, limit);
 const own = node => node?.nodeType === 1 && node.closest(OWN);
 const attrText = node => node?.getAttribute("content") || node?.getAttribute("datetime") || text(node);
@@ -160,6 +160,7 @@ function link(url, label, newTab, withIcon = true) {
 
 export function start() {
   let settings;
+  let messages;
   let port;
   let timer;
   let reconnectTimer;
@@ -207,6 +208,14 @@ export function start() {
         if (message.invalidate || !settings || settings.tmdbEnabled !== message.settings.tmdbEnabled) {
           cancelResolution();
         }
+        const language = message.settings.language;
+        if (!messages || settings?.language !== language) {
+          void messagesFor(language).then(localized => {
+            if (settings?.language !== language) return;
+            messages = localized;
+            schedule();
+          });
+        }
         settings = message.settings;
         schedule();
       }
@@ -225,13 +234,14 @@ export function start() {
   function setWidget(keep, key, anchor, type, details, build) {
     if (!anchor?.isConnected) return;
     keep.add(key);
-    const signature = JSON.stringify([type, details, settings.newTab, theme]);
+    const signature = JSON.stringify([type, details, settings.newTab, theme, messages.language]);
     const old = widgets.get(key);
     if (old?.anchor === anchor && old.node.isConnected && old.signature === signature) return;
     old?.node.remove();
     const node = document.createElement(type === "imdb" ? "span" : "div");
     node.dataset.toLetterboxd = type;
     node.dataset.theme = theme;
+    node.lang = messages.language;
     build(node);
     if (type === "result") anchor.before(node);
     else anchor.after(node);
@@ -244,7 +254,8 @@ export function start() {
       page = location.href;
       cancelResolution();
     }
-    if (settings && isGoogleSearch(page)) {
+    if (settings && messages && isGoogleSearch(page)) {
+      const msg = messages.get;
       theme = settings.theme;
       if (theme === "auto") {
         const color = getComputedStyle(document.body).backgroundColor;

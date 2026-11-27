@@ -1,7 +1,6 @@
+import { browserMessages, messagesFor } from "../core/messages.js";
 import { DEFAULTS, readSettings, SETTINGS_KEY, TMDB_PERMISSION } from "../core/settings.js";
 import { localize } from "../ui/localize.js";
-
-localize();
 
 const form = document.getElementById("settings");
 const controls = form.elements;
@@ -13,21 +12,27 @@ const test = document.getElementById("test-token");
 const remove = document.getElementById("remove-token");
 const restore = document.getElementById("restore");
 const clear = document.getElementById("clear-cache");
-const message = key => chrome.i18n.getMessage(key);
+let messages = browserMessages();
+let languagePreference = "auto";
+let tmdbStateKey = "";
+let settingsStateKey = "";
 let settings = { ...DEFAULTS };
 let configured = false;
 let busy = false;
 let settingsQueue = Promise.resolve();
 
+localize(messages);
 document.getElementById("version").textContent = `v${chrome.runtime.getManifest().version}`;
 form.addEventListener("submit", event => event.preventDefault());
 
 function report(state) {
-  tmdbState.textContent = message(state);
+  tmdbStateKey = state;
+  tmdbState.textContent = messages.get(state);
 }
 
 function reportSettings(state) {
-  settingsState.textContent = message(state);
+  settingsStateKey = state;
+  settingsState.textContent = messages.get(state);
   settingsState.hidden = !state;
 }
 
@@ -40,6 +45,17 @@ function render() {
   controls.tmdbEnabled.disabled = busy || !configured;
   token.disabled = save.disabled = test.disabled = busy;
   remove.disabled = busy || !configured;
+  if (languagePreference !== settings.language) {
+    const preference = settings.language;
+    languagePreference = preference;
+    void messagesFor(preference).then(localized => {
+      if (settings.language !== preference) return;
+      messages = localized;
+      localize(messages);
+      report(tmdbStateKey);
+      reportSettings(settingsStateKey);
+    });
+  }
 }
 
 function storeSettings(patch, replace = false) {
