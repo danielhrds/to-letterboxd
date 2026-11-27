@@ -501,6 +501,9 @@ function resultCard(node, url, label, direct, { tmdbPoster, googlePoster }, msg,
 }
 
 export function start() {
+  if (!chrome.runtime?.id || !isGoogleSearch(location.href)) return;
+  const events = new AbortController();
+  const { signal } = events;
   let settings;
   let messages;
   let timer;
@@ -513,6 +516,20 @@ export function start() {
   let palette;
   const widgets = new Map();
 
+  function contextActive(error) {
+    if (signal.aborted) return false;
+    if (error?.message !== "Extension context invalidated." && chrome.runtime?.id) return true;
+    events.abort();
+    observer.disconnect();
+    clearTimeout(timer);
+    timer = null;
+    settingsRequest++;
+    requests.clear();
+    for (const { node } of widgets.values()) node.remove();
+    widgets.clear();
+    return false;
+  }
+
   function cancelRequest(type) {
     const request = requests.get(type);
     requests.delete(type);
@@ -524,29 +541,36 @@ export function start() {
   }
 
   function schedule() {
-    if (timer || suspended) return;
+    if (!contextActive() || timer || suspended) return;
     timer = setTimeout(() => {
       timer = null;
-      render();
+      if (!contextActive()) return;
+      try {
+        render();
+      } catch (error) {
+        if (contextActive(error)) throw error;
+      }
     }, 70);
   }
 
   async function refreshSettings(invalidate = false) {
-    if (suspended || !isGoogleSearch(location.href)) return;
+    if (suspended || !contextActive() || !isGoogleSearch(location.href)) return;
     invalidateResults ||= invalidate;
     const request = ++settingsRequest;
     try {
       const next = await chrome.runtime.sendMessage({ type: "googleSettings" });
-      if (!next || request !== settingsRequest) return;
+      if (!contextActive() || !next || request !== settingsRequest) return;
       const localized = messages && settings?.language === next.language
         ? messages : await messagesFor(next.language);
-      if (request !== settingsRequest) return;
+      if (!contextActive() || request !== settingsRequest) return;
       if (invalidateResults || settings?.tmdbEnabled !== next.tmdbEnabled) cancelRequests();
       invalidateResults = false;
       settings = next;
       messages = localized;
       schedule();
-    } catch {}
+    } catch (error) {
+      contextActive(error);
+    }
   }
 
   function requestFilm(type, key, film) {
@@ -559,19 +583,19 @@ export function start() {
       const port = chrome.runtime.connect({ name: "googleResolution" });
       request.port = port;
       port.onDisconnect.addListener(() => {
-        void chrome.runtime.lastError;
         request.port = null;
+        if (contextActive()) void chrome.runtime.lastError;
       });
       port.onMessage.addListener(message => {
-        if (requests.get(type) !== request || message.type !== "result") return;
+        if (!contextActive() || requests.get(type) !== request || message.type !== "result") return;
         request.result = message.result;
         request.port = null;
         port.disconnect();
         schedule();
       });
       port.postMessage({ type, film });
-    } catch {
-      request.port?.disconnect();
+    } catch (error) {
+      if (contextActive(error)) request.port?.disconnect();
       request.port = null;
     }
   }
@@ -703,9 +727,8 @@ export function start() {
     }
   }
 
-  if (!isGoogleSearch(location.href)) return;
   chrome.runtime.onMessage.addListener((message, sender, reply) => {
-    if (sender.id !== chrome.runtime.id || !isGoogleSearch(location.href)) return;
+    if (!contextActive() || sender.id !== chrome.runtime.id || !isGoogleSearch(location.href)) return;
     if (message?.type === "refreshGoogleSettings") {
       void refreshSettings(message.invalidate === true);
     }
@@ -727,23 +750,24 @@ export function start() {
     subtree: true, childList: true, characterData: true, attributes: true,
     attributeFilter: ["href", "data-attrid", "content", "datetime"]
   });
-  document.addEventListener("visibilitychange", schedule);
+  document.addEventListener("visibilitychange", schedule, { signal });
   document.addEventListener("load", event => {
     if (event.target instanceof HTMLImageElement && !own(event.target) && posterShape(event.target)) schedule();
-  }, true);
-  window.addEventListener("popstate", schedule);
-  window.navigation?.addEventListener("currententrychange", schedule);
+  }, { capture: true, signal });
+  window.addEventListener("popstate", schedule, { signal });
+  window.navigation?.addEventListener("currententrychange", schedule, { signal });
   window.addEventListener("pagehide", () => {
+    if (!contextActive()) return;
     suspended = true;
     settingsRequest++;
     clearTimeout(timer);
     timer = null;
     cancelRequests();
-  });
+  }, { signal });
   window.addEventListener("pageshow", event => {
     if (!event.persisted) return;
     suspended = false;
     void refreshSettings();
-  });
+  }, { signal });
   void refreshSettings();
 }

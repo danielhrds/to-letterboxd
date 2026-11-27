@@ -554,10 +554,10 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.deepEqual(errors, []);
 });
 
-test("keeps local TMDB settings when updating from a different folder", {
+test("cleans up old Google widgets and keeps TMDB settings when updating from a different folder", {
   skip: chrome ? false : "Set TO_LETTERBOXD_CHROME to a Chrome executable", timeout: 20000
 }, async context => {
-  const { profile, send } = await openChrome(context);
+  const { profile, send, onEvent } = await openChrome(context);
   const { id } = await send("Extensions.loadUnpacked", { path: extensionPath });
   const popupUrl = `chrome-extension://${id}/src/popup/popup.html`;
   const popup = await openPage(send);
@@ -565,8 +565,35 @@ test("keeps local TMDB settings when updating from a different folder", {
   await until(() => popup.value("Boolean(globalThis.chrome?.storage?.local)"));
   await popup.value(`chrome.storage.local.set({
     tmdbToken: 'test-token-placeholder',
-    settings: { tmdbEnabled: true, language: 'pt-BR' }
+    settings: { tmdbEnabled: true, theme: 'dark' }
   })`);
+
+  const google = await openPage(send);
+  const page = "https://www.google.com/search?q=Interstellar";
+  const html = (await readFile(fixture)).toString("base64");
+  const errors = [];
+  onEvent(event => {
+    if (event.sessionId !== google.sessionId) return;
+    if (event.method === "Runtime.exceptionThrown") {
+      const { exception, text } = event.params.exceptionDetails;
+      errors.push(exception?.description ?? text);
+    }
+    if (event.method === "Fetch.requestPaused") {
+      void send("Fetch.fulfillRequest", {
+        requestId: event.params.requestId,
+        responseCode: 200,
+        responseHeaders: [{ name: "Content-Type", value: "text/html; charset=utf-8" }],
+        body: html
+      }, google.sessionId).catch(error => errors.push(error.message));
+    }
+  });
+  await send("Runtime.enable", {}, google.sessionId);
+  await send("Fetch.enable", { patterns: [
+    { urlPattern: "https://www.google.com/search*", resourceType: "Document" }
+  ] }, google.sessionId);
+  await google.navigate(page);
+  const hasResult = () => google.value("Boolean(document.querySelector('[data-to-letterboxd=result]'))");
+  await until(hasResult);
 
   const updatePath = join(profile, "next-extension-version");
   await mkdir(updatePath);
@@ -587,9 +614,14 @@ test("keeps local TMDB settings when updating from a different folder", {
   await until(() => updatedPopup.value(
     `globalThis.chrome?.runtime?.getManifest().version === ${JSON.stringify(manifest.version)}`
   ));
+  await google.value("document.querySelector('#rso').append(document.createElement('div'))");
+  await until(async () => errors.length || await google.value("!document.querySelector('[data-to-letterboxd]')"));
+  assert.deepEqual(errors, []);
+  await google.navigate(page + "&after-update=1");
+  await until(hasResult);
   assert.equal(await updatedPopup.value(`chrome.storage.local.get(['settings', 'tmdbToken'])
     .then(({ settings, tmdbToken }) =>
-      settings?.tmdbEnabled === true && settings.language === 'pt-BR' && tmdbToken === 'test-token-placeholder')`), true);
+      settings?.tmdbEnabled === true && settings.theme === 'dark' && tmdbToken === 'test-token-placeholder')`), true);
   const tmdbControls = () => updatedPopup.value(`(() => {
     const checkbox = document.querySelector('[name=tmdbEnabled]');
     return [checkbox.checked, checkbox.disabled, document.querySelector('#remove-token').disabled];
@@ -611,4 +643,5 @@ test("keeps local TMDB settings when updating from a different folder", {
   await updatedPopup.value("document.querySelector('#remove-token').click()");
   await until(async () => (await tmdbControls()).join(",") === "false,true,true");
   assert.deepEqual(await storedTmdb(), [false, false]);
+  assert.deepEqual(errors, []);
 });
