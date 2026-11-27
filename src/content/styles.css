@@ -63,20 +63,15 @@
 [data-to-letterboxd="panel"] {
   display: flex;
   align-items: center;
-  justify-content: center;
   flex-wrap: wrap;
   gap: 8px 14px;
   margin-block: 12px 16px;
   font-size: 14px;
 }
 
-[data-to-letterboxd="panel"] a:first-child {
-  display: flex;
-  inline-size: 100%;
+[data-to-letterboxd="panel"] > a:first-child {
   box-sizing: border-box;
-  min-block-size: 44px;
-  padding: 8px 12px;
-  gap: 10px;
+  max-inline-size: 100%;
   border-radius: 8px;
   background: var(--tl-surface);
   color: var(--tl-text);
@@ -84,8 +79,7 @@
   text-decoration: none;
 }
 
-[data-to-letterboxd="panel"] a:first-child:hover { text-decoration: underline; }
-[data-to-letterboxd="panel"] .tl-panel-arrow { margin-inline-start: auto; }
+[data-to-letterboxd="panel"] > a:first-child:hover { text-decoration: underline; }
 
 [data-to-letterboxd="result"] {
   inline-size: 100%;

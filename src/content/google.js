@@ -10,6 +10,7 @@ const MOVIE = '[itemscope][itemtype$="/Movie"]';
 const DIRECTOR = '[data-attrid="kc:/film/film:director"], [itemprop="director"]';
 const RELEASE = '[data-attrid="kc:/film/film:release date"], [data-attrid="kc:/film/film:theatrical region aware release date"], [itemprop="datePublished"]';
 const FILM_TITLE = '[data-attrid="title"], [data-attrid="kc:/film/film:title"]';
+const PANEL_SUBTITLE = '[data-attrid="subtitle"], [data-attrid="type"]';
 const FILM_DETAILS = '[data-attrid^="kc:/film/film:"]:not([data-attrid="kc:/film/film:title"])';
 const MAIN_HEADING = 'h1, [role="heading"][aria-level="1"]';
 const RESULT_HEADING = 'h3, [role="heading"][aria-level="3"]';
@@ -151,6 +152,11 @@ function panelCandidates() {
         panels.add(ancestor);
         break;
       }
+      if (ancestor.querySelector(PANEL_SUBTITLE)) {
+        const parent = ancestor.parentElement;
+        panels.add(parent && !parent.matches("body, main, #search") ? parent : ancestor);
+        break;
+      }
       ancestor = ancestor.parentElement;
     }
   }
@@ -177,6 +183,11 @@ function headerImdbLinks(main, title) {
   });
 }
 
+function panelTitles(title, query) {
+  const short = title.split(/[:–—]/u, 1)[0].trim();
+  return short !== title && query.titles.has(normalizeTitle(short)) ? [title, short] : [title];
+}
+
 function filmPanel(movie, query, results) {
   const movieNames = [movie?.name, ...[movie?.alternateName].flat()].map(normalizeTitle).filter(Boolean);
   let matchesSeries = false;
@@ -185,18 +196,20 @@ function filmPanel(movie, query, results) {
       .find(node => node.closest("[itemscope]") === panel && !node.closest(EXCLUDED)) : null;
     const expectedTitles = new Set([...query.titles, ...movieNames, normalizeTitle(attrText(name))]);
     const explicit = [...panel.querySelectorAll(FILM_TITLE)].filter(node => !node.closest(EXCLUDED));
-    const headings = explicit.length ? explicit : [...panel.querySelectorAll(MAIN_HEADING)]
+    const headingSelector = panel.matches(SPLIT_PANEL)
+      ? MAIN_HEADING + ', h2, [role="heading"][aria-level="2"]' : MAIN_HEADING;
+    const headings = explicit.length ? explicit : [...panel.querySelectorAll(headingSelector)]
       .filter(node => !node.closest(EXCLUDED));
     const matches = headings.filter(node => {
-      const title = normalizeTitle(parseSelection(text(node)).title);
-      return title && expectedTitles.has(title);
+      const title = cleanText(parseSelection(text(node)).title);
+      return title && panelTitles(title, query).some(name => expectedTitles.has(normalizeTitle(name)));
     });
     const heading = explicit.length === 1 ? explicit[0] : matches.length === 1 ? matches[0] : null;
     const titleElement = heading ?? (name && !name.matches("meta") ? name : null);
     const headingData = parseSelection(attrText(name || titleElement));
     const title = cleanText(headingData.title, 180);
     if (!title) continue;
-    const descriptor = text(panel.querySelector('[data-attrid="subtitle"], [data-attrid="type"]'), 150);
+    const descriptor = text(panel.querySelector(PANEL_SUBTITLE), 150);
     const year = yearIn(attrText(panel.querySelector(RELEASE))) || yearIn(descriptor) || headingData.year;
     const seriesSelector = '[data-attrid^="kc:/tv/"], [itemtype$="/TVSeries"]';
     if (SERIES.test(descriptor) || panel.matches(seriesSelector) || panel.querySelector(seriesSelector)) {
@@ -210,14 +223,22 @@ function filmPanel(movie, query, results) {
     const directors = [...(split?.sidebar ?? panel).querySelectorAll(DIRECTOR)].map(node =>
       text(node.querySelector('[itemprop="name"], a') ?? node, 120).replace(/^(?:directors?|direç[ãa]o|diretores?)\s*:\s*/i, ""));
     const director = directors.length === 1 ? directors[0] : "";
-    const linkedMovie = movieNames.includes(normalizeTitle(title));
-    const matchingHeadline = panel.matches(SPLIT_PANEL) && year && runtime && results.some(({ heading, ids }) => {
-      if (ids?.source !== "imdb") return false;
-      const candidate = resultIdentity(heading);
-      return candidate.year === year && normalizeTitle(candidate.title) === normalizeTitle(title);
-    });
+    const names = panelTitles(title, query);
+    const normalizedNames = names.map(normalizeTitle);
+    const linkedMovie = normalizedNames.some(name => movieNames.includes(name));
+    const filmHeader = year && runtime && (panel.matches(SPLIT_PANEL) ||
+      (titleElement?.matches(FILM_TITLE) && !panel.closest("#rso, #rhs")));
+    const main = filmHeader && (split?.main ?? panel.closest('main, [role="main"]'));
+    const headerLinks = main ? headerImdbLinks(main, title) : [];
+    const matchingHeadline = filmHeader && (
+      results.some(({ heading, ids }) => {
+        if (ids?.source !== "imdb") return false;
+        const candidate = resultIdentity(heading);
+        return candidate.year === year && normalizedNames.includes(normalizeTitle(candidate.title));
+      }) || letterboxdFilmResult(results, names, year)
+    );
     const filmEvidence = panel.matches(MOVIE) || panel.querySelector(FILM_DETAILS) ||
-      split || linkedMovie || matchingHeadline || (director && year && runtime);
+      split || linkedMovie || headerLinks.length || matchingHeadline || (director && year && runtime);
     if (!filmEvidence) continue;
     const data = linkedMovie ? metadata(movie, title) : {};
     const sourceLinks = [...panel.querySelectorAll("a[href]")].filter(anchor =>
@@ -225,7 +246,7 @@ function filmPanel(movie, query, results) {
       (anchor.matches('[itemprop="sameAs"]') || /^(IMDb|TMDB|Letterboxd)$/i.test(text(anchor))));
     const links = combineLinks([
       ...sourceLinks.map(anchor => anchor.href),
-      ...(split ? headerImdbLinks(split.main, title) : []),
+      ...headerLinks,
       data.canonicalUrl,
       data.imdbId && redirectUrl({ imdbId: data.imdbId }),
       data.tmdbId && redirectUrl({ tmdbId: data.tmdbId })
@@ -236,7 +257,10 @@ function filmPanel(movie, query, results) {
     const anchor = titleElement && outsideInlineLayout(titleElement, panel);
     return {
       anchor,
-      film: { ...data, ...links, title, year: movieYear, director: data.director || director, conflictingIds }
+      film: {
+        ...data, ...links, title, originalTitle: data.originalTitle || names[1],
+        year: movieYear, director: data.director || director, conflictingIds
+      }
     };
   }
   return matchesSeries ? { matchesSeries } : null;
@@ -407,8 +431,15 @@ function link(url, label, newTab, withIcon = true) {
 
 function panelLink(url, label, newTab) {
   const anchor = link(url, label, newTab);
+  Object.assign(anchor.style, {
+    inlineSize: "fit-content",
+    minBlockSize: "30px",
+    padding: "4px 10px",
+    gap: "6px"
+  });
   const arrow = document.createElement("span");
   arrow.className = "tl-panel-arrow";
+  arrow.style.marginInlineStart = "0";
   arrow.setAttribute("aria-hidden", "true");
   arrow.textContent = "↗";
   anchor.append(arrow);
@@ -631,6 +662,8 @@ export function start() {
           }
           if (panel?.anchor && settings.googlePanel) {
             setWidget(keep, "panel", panel.anchor, "panel", [direct, fallback], node => {
+              node.style.justifyContent = "flex-start";
+              node.style.textAlign = "start";
               node.append(panelLink(direct || fallback, msg(direct ? "menuOpen" : "searchOnLetterboxd"), settings.newTab));
               if (direct && !canonical) node.append(link(fallback, msg("searchInstead"), settings.newTab, false));
             });

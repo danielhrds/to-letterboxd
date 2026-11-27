@@ -112,6 +112,8 @@ test("installs in Chrome and updates Google controls across settings and result 
   const popup = await openPage(send);
   const html = await readFile(fixture, "utf8");
   const splitFilm = await readFile(new URL("./fixtures/google-split-film.html", import.meta.url), "utf8");
+  const splitWithoutSidebar = splitFilm.replace(/<aside id="rhs"[\s\S]*?<\/aside>/, "")
+    .replace(/<div role="group" aria-label="Avaliações">[\s\S]*?<\/div>/, "");
   const fakeGoogle = "https://www.google.com/search?q=Interstellar";
   const regularHtml = html.replace(/<aside id="rhs">[\s\S]+?<\/aside>/, "");
   const movieHtml = html.replace(
@@ -124,6 +126,8 @@ test("installs in Chrome and updates Google controls across settings and result 
       .replace("tt0816692", "tt0080728")
       .replace('<div id="rso"', '<div role="region" aria-label="AI Overview">A 1981 film and a 2013 novel</div><div id="rso"'),
     "split-film": splitFilm,
+    "split-without-sidebar": splitWithoutSidebar,
+    "semantic-film-header": splitWithoutSidebar.replace('<div class="kp-wholepage-osrp">', "<div>"),
     "split-series": splitFilm.replace("1976 ‧ Crime/Noir ‧ 1h 54m", "1976 ‧ Série de TV ‧ 54 min"),
     "film-without-sidebar": splitFilm.replace(/<aside id="rhs"[\s\S]+?<\/aside>/, "")
       .replaceAll("Taxi Driver: Motorista de Táxi", "Interstellar")
@@ -281,8 +285,24 @@ test("installs in Chrome and updates Google controls across settings and result 
     url: "https://letterboxd.com/tmdb/157336", target: "_blank"
   });
   assert.equal(await google.value(`(() => {
+    const oldStyle = document.createElement('style');
+    oldStyle.textContent = [
+      'body [data-to-letterboxd="panel"][data-theme] { justify-content: center; text-align: center; }',
+      '[data-to-letterboxd="panel"] a:first-child { display: flex; inline-size: 100%; min-block-size: 44px; padding: 8px 12px; gap: 10px; }',
+      '[data-to-letterboxd="panel"] .tl-panel-arrow { margin-inline-start: auto; }'
+    ].join(' ');
+    document.head.append(oldStyle);
     const panel = document.querySelector('[data-to-letterboxd=panel]');
-    return panel.firstElementChild.getBoundingClientRect().width === panel.getBoundingClientRect().width;
+    const heading = document.querySelector('#film-heading').getBoundingClientRect();
+    const row = panel.getBoundingClientRect();
+    const link = panel.firstElementChild;
+    const button = link.getBoundingClientRect();
+    const text = document.createRange();
+    text.selectNode(link.childNodes[1]);
+    const arrowGap = link.lastElementChild.getBoundingClientRect().left - text.getBoundingClientRect().right;
+    oldStyle.remove();
+    return button.left === heading.left && button.width < row.width / 2 && button.height === 30 &&
+      arrowGap >= 4 && arrowGap <= 8;
   })()`), true);
   const selectLanguage = language => popup.value(`(() => {
     const select = document.querySelector('select[name=language]');
@@ -392,6 +412,12 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.equal((await links("panel"))[0], "https://letterboxd.com/imdb/tt0816692");
 
   const taxi = "https://letterboxd.com/imdb/tt0075314";
+  for (const variant of ["split-without-sidebar", "semantic-film-header"]) {
+    await google.navigate(`https://www.google.com/search?q=taxi+driver&fixture=${variant}`);
+    await until(async () => await google.value(
+      `location.search.includes(${JSON.stringify(`fixture=${variant}`)})`) && (await links("panel"))[0] === taxi);
+    assert.equal(await google.value("document.querySelector('#film-heading').nextElementSibling?.dataset.toLetterboxd"), "panel");
+  }
   await google.navigate("https://www.google.com/search?q=Taxi+Driver+1976+filme&fixture=split-film");
   await until(async () => (await links("result"))[0] === taxi);
   assert.equal((await links("panel"))[0], taxi);
