@@ -15,6 +15,8 @@ An independent Chrome extension for opening films on Letterboxd.
 2. Click **Load unpacked** and select the folder containing `manifest.json`. Extract the ZIP first if you're using it.
 3. Click a Letterboxd shortcut on Google, or select a film title and choose **Open on Letterboxd** from the right-click menu.
 
+To update, replace the files in the installed folder and click **Reload** in `chrome://extensions`. Leave the extension installed to keep your settings. If you're upgrading from 0.2.13 or earlier, load the new build, disable the old copy, and save your TMDB token once on the new copy.
+
 ## Optional TMDB setup
 
 TMDB helps match titles without a film link or ID. Open **TMDB and cache** in the popup, paste your **API Read Access Token**, and click **Save and enable**. Adding the year helps distinguish remakes such as `Oldboy (2003)` and `Oldboy (2013)`. [TMDB API settings](https://www.themoviedb.org/settings/api)

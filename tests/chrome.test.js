@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -84,7 +84,7 @@ async function openChrome(context) {
       await rm(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
     }
   });
-  return { send, onEvent: callback => { receiver = callback; } };
+  return { profile, send, onEvent: callback => { receiver = callback; } };
 }
 
 async function openPage(send) {
@@ -526,4 +526,43 @@ test("installs in Chrome and updates Google controls across settings and result 
   assert.deepEqual(await links("result"), []);
   await until(menuExists);
   assert.deepEqual(errors, []);
+});
+
+test("keeps local TMDB settings when updating from a different folder", {
+  skip: chrome ? false : "Set TO_LETTERBOXD_CHROME to a Chrome executable", timeout: 20000
+}, async context => {
+  const { profile, send } = await openChrome(context);
+  const { id } = await send("Extensions.loadUnpacked", { path: extensionPath });
+  const popupUrl = `chrome-extension://${id}/src/popup/popup.html`;
+  const popup = await openPage(send);
+  await popup.navigate(popupUrl);
+  await until(() => popup.value("Boolean(globalThis.chrome?.storage?.local)"));
+  await popup.value(`chrome.storage.local.set({
+    tmdbToken: 'test-token-placeholder',
+    settings: { tmdbEnabled: true, language: 'pt-BR' }
+  })`);
+
+  const updatePath = join(profile, "next-extension-version");
+  await mkdir(updatePath);
+  const manifest = JSON.parse(await readFile(join(extensionPath, "manifest.json"), "utf8"));
+  const parts = manifest.version.split(".").map(Number);
+  parts[parts.length - 1]++;
+  manifest.version = parts.join(".");
+  await Promise.all([
+    writeFile(join(updatePath, "manifest.json"), JSON.stringify(manifest)),
+    ...["_locales", "assets", "src"].map(name =>
+      cp(join(extensionPath, name), join(updatePath, name), { recursive: true }))
+  ]);
+  const updated = await send("Extensions.loadUnpacked", { path: updatePath });
+  assert.equal(updated.id, id);
+
+  const updatedPopup = await openPage(send);
+  await updatedPopup.navigate(popupUrl);
+  await until(() => updatedPopup.value(
+    `globalThis.chrome?.runtime?.getManifest().version === ${JSON.stringify(manifest.version)}`
+  ));
+  assert.equal(await updatedPopup.value(`chrome.storage.local.get(['settings', 'tmdbToken'])
+    .then(({ settings, tmdbToken }) =>
+      settings?.tmdbEnabled === true && settings.language === 'pt-BR' && tmdbToken === 'test-token-placeholder')`), true);
+  assert.equal(await updatedPopup.value("chrome.runtime.sendMessage({type: 'tmdbState'}).then(state => state.configured)"), true);
 });
